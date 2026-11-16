@@ -1,0 +1,34 @@
+{
+  "name": "dsh-tab-browser",
+  "version": "0.2.0",
+  "description": "浏览器增强 · 在 DeepSeek Harness 原有的浏览器 Tab 中使用 Google Chrome、扩展和密码管理器",
+  "type": "module",
+  "main": "./dist/host.js",
+  "exports": {
+    ".": "./dist/host.js",
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "dist", "runtime", "cordis.patch.yml", "LICENSE", "NOTICE", "README.md"],
+  "engines": { "dsh": "0.2.2-rc.3", "node": ">=22.15.0" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs && node --check dist/client.js",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test"
+  },
+  "devDependencies": {
+    "@novnc/novnc": "1.7.0",
+    "esbuild": "0.28.2",
+    "ws": "8.23.0"
+  },
+  "license": "MIT"
+}

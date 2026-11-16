@@ -1,0 +1,13 @@
+noVNC 1.7.0 is included in the loopback viewer. Its source and licensing notices are at
+https://github.com/novnc/noVNC/tree/v1.7.0 and in dist/LICENSE.noVNC.
+
+ws 8.23.0 is included in the Host bundle under the MIT license. See dist/LICENSE.ws.
+https://github.com/websockets/ws
+
+runtime/seccomp.json comes from the Apache-2.0-licensed Playwright project.
+It additionally allows chroot for Chrome's unprivileged namespace sandbox.
+https://github.com/microsoft/playwright/blob/main/utils/docker/seccomp_profile.json
+See runtime/LICENSE.playwright.
+
+Google Chrome is downloaded directly from Google's signed Linux APT repository at first setup.
+Chrome is distributed by Google and is subject to Google's terms. It is not included in this npm package.

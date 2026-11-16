@@ -1,0 +1,150 @@
+import { useEffect, useRef, useState } from 'react'
+
+const ID = 'dsh-tab-browser'
+const SLOT = 'sidebar.right.pane.tab'
+let lastViewer
+let navigations = new WeakMap()
+const messages = {
+  zh: {
+    browser: '浏览器', title: 'Google Chrome', description: '在侧栏浏览网页',
+    start: '启动 Chrome', retry: '重试', waiting: '正在启动 Chrome…',
+    firstRun: '首次启动需要下载浏览器。Chrome 使用独立的浏览器资料。',
+    local: '请在本机 DSH 桌面版或本机 Web 界面打开。',
+    failed: 'Chrome 启动失败。',
+  },
+  en: {
+    browser: 'Browser', title: 'Google Chrome', description: 'Browse the web in the sidebar',
+    start: 'Start Chrome', retry: 'Try again', waiting: 'Starting Chrome…',
+    firstRun: 'The first launch downloads Chrome. This browser uses its own profile.',
+    local: 'Open this tab in the local DSH desktop app or a local DSH web session.',
+    failed: 'Chrome could not start.',
+  },
+}
+
+function localClient() {
+  return window.dshDesktop?.protocolVersion === 1 || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
+}
+
+function parseViewer(value) {
+  const url = new URL(value)
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password ||
+      !/^\/[A-Za-z0-9_-]{43}\/$/u.test(url.pathname) || url.search || url.hash) throw new Error()
+  return url
+}
+
+function ChromeTab({ useTabInfo, t }) {
+  const { tab } = useTabInfo()
+  const { revision, params } = tab.navigation
+  const url = params?.url
+  const [viewer, setViewer] = useState(lastViewer)
+  const [error, setError] = useState('')
+  const [starting, setStarting] = useState(false)
+  const frame = useRef(null)
+  const request = useRef(null)
+  const local = localClient()
+
+  async function connect({ target, newPage = false, reconnect = false } = {}) {
+    request.current?.abort()
+    const controller = new AbortController()
+    request.current = controller
+    if (reconnect) setViewer(null)
+    setStarting(true)
+    setError('')
+    try {
+      const response = await fetch(new URL('api/dsh-tab-browser/connect', document.baseURI), {
+        method: 'POST', headers: { 'X-DSH-Chrome': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target, newPage }), signal: controller.signal,
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : t('failed'))
+      if (controller.signal.aborted) return
+      const next = parseViewer(result.url)
+      if (reconnect || lastViewer?.url.href !== next.href) {
+        lastViewer = { url: next, generation: (lastViewer?.generation ?? 0) + 1 }
+      }
+      setViewer(lastViewer)
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setViewer(null)
+        lastViewer = undefined
+        setError(error?.message || t('failed'))
+      }
+    } finally {
+      if (request.current === controller) {
+        request.current = null
+        setStarting(false)
+      }
+    }
+  }
+
+  useEffect(() => () => {
+    request.current?.abort()
+    request.current = null
+  }, [])
+  useEffect(() => {
+    if (!local || !tab.visible) return
+    const previous = navigations.get(tab.signal)
+    if (previous === revision && (lastViewer || request.current)) return
+    navigations.set(tab.signal, revision)
+    if (typeof url === 'string' && previous !== revision) void connect({ target: url })
+    else if (lastViewer && previous !== undefined && previous !== revision) void connect({ newPage: true })
+    else if (!lastViewer) void connect()
+  }, [local, tab.visible, tab.signal, revision, url])
+  useEffect(() => {
+    if (!viewer) return
+    const reconnect = event => {
+      if (event.source === frame.current?.contentWindow && event.origin === viewer.url.origin &&
+          event.data?.type === 'dsh-chrome-reconnect') void connect({ reconnect: true })
+    }
+    window.addEventListener('message', reconnect)
+    return () => window.removeEventListener('message', reconnect)
+  }, [viewer])
+
+  return <div data-dsh-tab-chrome="">
+    {viewer ? <iframe key={viewer.generation} ref={frame} title="Google Chrome" src={viewer.url.href}
+      sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" /> :
+      <section className="chrome-start">
+        <h2>{t('title')}</h2>
+        <p>{t(local ? 'description' : 'local')}</p>
+        {local && <>
+          <button type="button" onClick={() => connect({ target: url })} disabled={starting}>{t(starting ? 'waiting' : error ? 'retry' : 'start')}</button>
+          {error ? <p role="alert">{error}</p> : <p className="chrome-note">{t('firstRun')}</p>}
+        </>}
+      </section>}
+  </div>
+}
+
+const css = `
+[data-dsh-tab-chrome]{display:flex;flex:1;width:100%;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+[data-dsh-tab-chrome] iframe{display:block;flex:1;width:100%;height:100%;min-width:0;min-height:0;border:0}
+[data-dsh-tab-chrome] .chrome-start{margin:auto;display:grid;gap:10px;justify-items:start;padding:24px;max-width:360px;white-space:normal}
+[data-dsh-tab-chrome] h2{font-size:25px;line-height:1.2;font-weight:600;margin:0 0 3px}
+[data-dsh-tab-chrome] p{margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+[data-dsh-tab-chrome] .chrome-note{color:var(--dsw-alias-label-secondary);font-size:12px}
+[data-dsh-tab-chrome] button{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font:inherit;font-size:13px;padding:8px 14px;cursor:pointer}
+[data-dsh-tab-chrome] button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+[data-dsh-tab-chrome] button:disabled{cursor:wait;opacity:.65}
+`
+
+export const inject = ['sidebarRightTabs', 'slots', 'locale']
+
+export function apply(ctx) {
+  const namespace = 'dshChromeTab'
+  const t = ctx.locale.bind(namespace)
+  ctx.effect(() => ctx.locale.register(namespace, messages), `${ID}: copy`)
+  ctx.effect(() => ctx.sidebarRightTabs.register({
+    id: ID, kind: 'browser', priority: 'extension', title: () => t('browser'),
+    guide: [{ id: 'new', commandId: 'browser.new', order: 30, title: () => t('browser'), description: () => t('description') }],
+  }), `${ID}: tab`)
+  ctx.effect(() => ctx.slots.inject(SLOT, () => ctx.slots.register({ name: SLOT, key: ID, locale: namespace }, ChromeTab)), `${ID}: body`)
+  ctx.effect(() => {
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.append(style)
+    return () => {
+      style.remove()
+      lastViewer = undefined
+      navigations = new WeakMap()
+    }
+  }, `${ID}: styles`)
+}
