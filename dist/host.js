@@ -3851,9 +3851,13 @@ var ChromeRuntime = class {
     this.started = false;
   }
   docker(args, timeout) {
-    return run(this.dockerBin, ["--context", CONTEXT, ...args], timeout);
+    return run(this.dockerBin, this.dockerArgs(args), timeout);
+  }
+  dockerArgs(args) {
+    return this.dockerSocket ? ["--host", this.dockerSocket, ...args] : ["--context", CONTEXT, ...args];
   }
   async ensureDocker() {
+    this.dockerSocket = void 0;
     const local = () => this.docker(["context", "inspect", CONTEXT, "--format", "{{.Endpoints.docker.Host}}"]);
     const colima = executable("colima");
     let socket = await local().catch(() => "");
@@ -3881,6 +3885,7 @@ var ChromeRuntime = class {
       socket = await local().catch(() => "");
     }
     if (!socket.startsWith("unix://")) throw new Error("Chrome \u9700\u8981\u8FDE\u63A5\u672C\u673A Docker\u3002");
+    this.dockerSocket = socket;
     if (process.platform === "darwin") {
       await run(colima, [
         "ssh",
@@ -3895,14 +3900,16 @@ var ChromeRuntime = class {
     }
   }
   async start() {
-    await this.ensureDocker();
-    const state = await this.docker([
+    const inspect = () => this.docker([
       "container",
       "inspect",
       this.name,
       "--format",
       '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}} {{.Config.Image}}'
     ]).catch(() => "");
+    if (this.started && await inspect() === `true ${this.profileVolume} ${IMAGE}`) return;
+    await this.ensureDocker();
+    const state = await inspect();
     const [running, volume, currentImage] = state.split(" ");
     let unlocked = false;
     if (state && volume !== this.profileVolume) {
@@ -3977,7 +3984,7 @@ var ChromeRuntime = class {
   connectDisplay() {
     return spawn(
       this.dockerBin,
-      ["--context", CONTEXT, "exec", "-i", this.name, "nc", "-N", "127.0.0.1", "5900"],
+      this.dockerArgs(["exec", "-i", this.name, "nc", "-N", "127.0.0.1", "5900"]),
       { stdio: ["pipe", "pipe", "ignore"] }
     );
   }
@@ -3986,16 +3993,14 @@ var ChromeRuntime = class {
   }
   keyringCommand(action, password) {
     return new Promise((resolve2) => {
-      const child = execFile2(this.dockerBin, [
-        "--context",
-        CONTEXT,
+      const child = execFile2(this.dockerBin, this.dockerArgs([
         "exec",
         "-i",
         this.name,
         "python3",
         "/usr/local/bin/chrome-keyring.py",
         action
-      ], { timeout: 24e3, maxBuffer: 1024 }, (error) => resolve2(!error));
+      ]), { timeout: 24e3, maxBuffer: 1024 }, (error) => resolve2(!error));
       child.stdin.on("error", () => {
       });
       child.stdin.end(password);
@@ -4003,16 +4008,14 @@ var ChromeRuntime = class {
   }
   async importCookies(cookies) {
     const result = await new Promise((resolve2, reject) => {
-      const child = execFile2(this.dockerBin, [
-        "--context",
-        CONTEXT,
+      const child = execFile2(this.dockerBin, this.dockerArgs([
         "exec",
         "-i",
         this.name,
         "python3",
         "/usr/local/bin/chrome-cookie-pipe.py",
         "--import"
-      ], { timeout: 3e4, maxBuffer: 1024 }, (error, stdout) => {
+      ]), { timeout: 3e4, maxBuffer: 1024 }, (error, stdout) => {
         if (error) reject(new Error("Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002"));
         else resolve2(stdout.trim());
       });
@@ -4065,6 +4068,7 @@ var html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="
 <section id="connection" role="status"><span id="status">\u6B63\u5728\u8FDE\u63A5 Chrome\u2026</span><button id="retry" hidden>\u91CD\u8FDE</button></section>
 <script type="module" src="viewer.js"></script></html>`;
 var css = `html,body,#screen{width:100%;height:100%;margin:0;overflow:hidden}body{background:#181a1b;color:#e8eaed;font:14px system-ui,sans-serif}
+body{display:grid;place-items:center}#screen{max-width:1440px;max-height:1000px}
 #connection{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:12px;background:#181a1b}
 #connection[hidden],button[hidden]{display:none}button{font:inherit;color:inherit;background:#303337;border:1px solid #626569;border-radius:6px;padding:6px 12px;cursor:pointer}`;
 async function openViewer(chrome) {

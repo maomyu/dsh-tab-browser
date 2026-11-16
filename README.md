@@ -16,6 +16,8 @@ DeepSeek Harness 原来的「浏览器」Tab 运行独立 Chrome。浏览记录�
 
 macOS 桌面版可在「浏览器」Tab 点「密钥环自动解锁」。输入独立 Chrome 的原有密钥环密码一次，点「保存并开启」。DSH 用本机 macOS 钥匙串保存它，下次启动时解锁原密钥环。可在同一入口关闭自动解锁。网站登录状态仍按各网站的有效期保存。
 
+浏览器 Tab 切到后台时暂停传输画面，切回来继续显示同一套独立 Chrome。大窗口的传输画面上限为 1440 × 1000，以降低处理高分辨率画面的开销。
+
 独立模式在 macOS 上需安装 Docker CLI 和 Colima，首次打开约需下载数百 MB。插件启动独立的 `dsh-chrome` Colima 配置，分配 2 核、4 GiB 内存，可用 `colima stop --profile dsh-chrome` 释放。重启后浏览器资料从各 DSH profile 的专用 Docker 卷恢复。一个 DSH profile 共享同一个独立 Chrome 窗口。停用插件后 DSH 恢复原浏览器的渲染器。
 
 独立模式运行官方 Google Chrome 的 Linux 稳定版。下载文件和 `localhost` 位于该 Linux 环境，macOS 钥匙串、Touch ID、音频与剪贴板未接到独立环境。需要同步时在独立 Chrome 中自行登录。删除插件会关闭独立 Chrome 连接，浏览器资料卷留待下次使用。

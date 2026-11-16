@@ -42,10 +42,15 @@ export class ChromeRuntime {
   }
 
   docker(args, timeout) {
-    return run(this.dockerBin, ['--context', CONTEXT, ...args], timeout)
+    return run(this.dockerBin, this.dockerArgs(args), timeout)
+  }
+
+  dockerArgs(args) {
+    return this.dockerSocket ? ['--host', this.dockerSocket, ...args] : ['--context', CONTEXT, ...args]
   }
 
   async ensureDocker() {
+    this.dockerSocket = undefined
     const local = () => this.docker(['context', 'inspect', CONTEXT, '--format', '{{.Endpoints.docker.Host}}'])
     const colima = executable('colima')
     let socket = await local().catch(() => '')
@@ -61,6 +66,7 @@ export class ChromeRuntime {
       socket = await local().catch(() => '')
     }
     if (!socket.startsWith('unix://')) throw new Error('Chrome 需要连接本机 Docker。')
+    this.dockerSocket = socket
     if (process.platform === 'darwin') {
       // Some Colima images ship a resolver symlink whose systemd service is absent.
       await run(colima, ['ssh', '--profile', COLIMA_PROFILE, '--', 'sudo', 'sh', '-c',
@@ -69,9 +75,11 @@ export class ChromeRuntime {
   }
 
   async start() {
-    await this.ensureDocker()
-    const state = await this.docker(['container', 'inspect', this.name, '--format',
+    const inspect = () => this.docker(['container', 'inspect', this.name, '--format',
       '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}} {{.Config.Image}}']).catch(() => '')
+    if (this.started && await inspect() === `true ${this.profileVolume} ${IMAGE}`) return
+    await this.ensureDocker()
+    const state = await inspect()
     const [running, volume, currentImage] = state.split(' ')
     let unlocked = false
     if (state && volume !== this.profileVolume) {
@@ -118,7 +126,7 @@ export class ChromeRuntime {
   }
 
   connectDisplay() {
-    return spawn(this.dockerBin, ['--context', CONTEXT, 'exec', '-i', this.name, 'nc', '-N', '127.0.0.1', '5900'],
+    return spawn(this.dockerBin, this.dockerArgs(['exec', '-i', this.name, 'nc', '-N', '127.0.0.1', '5900']),
       { stdio: ['pipe', 'pipe', 'ignore'] })
   }
 
@@ -128,8 +136,8 @@ export class ChromeRuntime {
 
   keyringCommand(action, password) {
     return new Promise(resolve => {
-      const child = execFile(this.dockerBin, ['--context', CONTEXT, 'exec', '-i', this.name,
-        'python3', '/usr/local/bin/chrome-keyring.py', action], { timeout: 24_000, maxBuffer: 1024 }, error => resolve(!error))
+      const child = execFile(this.dockerBin, this.dockerArgs(['exec', '-i', this.name,
+        'python3', '/usr/local/bin/chrome-keyring.py', action]), { timeout: 24_000, maxBuffer: 1024 }, error => resolve(!error))
       child.stdin.on('error', () => {})
       child.stdin.end(password)
     })
@@ -137,8 +145,8 @@ export class ChromeRuntime {
 
   async importCookies(cookies) {
     const result = await new Promise((resolve, reject) => {
-      const child = execFile(this.dockerBin, ['--context', CONTEXT, 'exec', '-i', this.name,
-        'python3', '/usr/local/bin/chrome-cookie-pipe.py', '--import'], { timeout: 30_000, maxBuffer: 1024 }, (error, stdout) => {
+      const child = execFile(this.dockerBin, this.dockerArgs(['exec', '-i', this.name,
+        'python3', '/usr/local/bin/chrome-cookie-pipe.py', '--import']), { timeout: 30_000, maxBuffer: 1024 }, (error, stdout) => {
         if (error) reject(new Error('Chrome 无法导入 Cookie。'))
         else resolve(stdout.trim())
       })

@@ -8,6 +8,7 @@ const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name
 <section id="connection" role="status"><span id="status">正在连接 Chrome…</span><button id="retry" hidden>重连</button></section>
 <script type="module" src="viewer.js"></script></html>`
 const css = `html,body,#screen{width:100%;height:100%;margin:0;overflow:hidden}body{background:#181a1b;color:#e8eaed;font:14px system-ui,sans-serif}
+body{display:grid;place-items:center}#screen{max-width:1440px;max-height:1000px}
 #connection{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:12px;background:#181a1b}
 #connection[hidden],button[hidden]{display:none}button{font:inherit;color:inherit;background:#303337;border:1px solid #626569;border-radius:6px;padding:6px 12px;cursor:pointer}`
 

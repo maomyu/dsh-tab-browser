@@ -11,6 +11,8 @@ function connect() {
   const endpoint = new URL('rfb', location.href)
   endpoint.protocol = 'ws:'
   const browser = new RFB(screen, endpoint.href)
+  browser.compressionLevel = 1
+  browser.qualityLevel = 5
   browser.scaleViewport = true
   browser.resizeSession = true
   browser.addEventListener('connect', () => { connection.hidden = true })

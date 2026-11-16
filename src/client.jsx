@@ -233,8 +233,8 @@ function ChromeTab({ tab, t }) {
       <CookieImport t={t} />
       {window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes('Macintosh') && <KeyringSettings t={t} />}
     </div>}
-    {viewer ? <iframe key={viewer.generation} ref={frame} title="Google Chrome" src={viewer.url.href}
-      sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" /> :
+    {viewer ? (tab.visible && <iframe key={viewer.generation} ref={frame} title="Google Chrome" src={viewer.url.href}
+      sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />) :
       <section className="chrome-start">
         <h2>{t('title')}</h2>
         <p>{t(local ? 'description' : 'local')}</p>

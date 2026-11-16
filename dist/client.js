@@ -320,7 +320,7 @@ function ChromeTab({ tab, t }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CookieImport, { t }),
       window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(KeyringSettings, { t })
     ] }),
-    viewer ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    viewer ? tab.visible && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "iframe",
       {
         ref: frame,
