@@ -92,7 +92,17 @@ var messages = {
     invalidFile: "\u8BF7\u9009\u62E9\u6709\u6548\u7684\u5355\u7AD9\u70B9 Cookie JSON \u6587\u4EF6\u3002",
     importFailed: "Cookie \u5BFC\u5165\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002",
     imported: "Cookie \u5DF2\u5BFC\u5165\u3002\u8BF7\u5728\u7F51\u9875\u786E\u8BA4\u767B\u5F55\u72B6\u6001\u3002",
-    manualOpen: "Cookie \u5DF2\u5BFC\u5165\u3002\u8BF7\u5728 Chrome \u6253\u5F00\u8BE5\u7F51\u7AD9\u3002"
+    manualOpen: "Cookie \u5DF2\u5BFC\u5165\u3002\u8BF7\u5728 Chrome \u6253\u5F00\u8BE5\u7F51\u7AD9\u3002",
+    keyring: "\u5BC6\u94A5\u73AF\u81EA\u52A8\u89E3\u9501",
+    keyringHelp: "\u8F93\u5165\u72EC\u7ACB Chrome \u539F\u6709\u7684\u5BC6\u94A5\u73AF\u5BC6\u7801\u3002\u5BC6\u7801\u4FDD\u5B58\u5230\u672C\u673A macOS \u94A5\u5319\u4E32\u3002",
+    keyringPassword: "\u5BC6\u94A5\u73AF\u5BC6\u7801",
+    keyringSave: "\u4FDD\u5B58\u5E76\u5F00\u542F",
+    keyringForget: "\u5173\u95ED\u81EA\u52A8\u89E3\u9501",
+    keyringSaved: "\u5DF2\u5F00\u542F\u3002\u4E0B\u6B21\u542F\u52A8\u4F1A\u81EA\u52A8\u89E3\u9501\u3002",
+    keyringForgotten: "\u5DF2\u5173\u95ED\u81EA\u52A8\u89E3\u9501\u3002",
+    invalidPassword: "\u5BC6\u7801\u672A\u901A\u8FC7\u6838\u5BF9\u3002\u8BF7\u786E\u8BA4\u5DF2\u521B\u5EFA\u5BC6\u94A5\u73AF\uFF0C\u5E76\u8F93\u5165\u539F\u6765\u8BBE\u7F6E\u7684\u5BC6\u7801\u3002",
+    keyringFailed: "\u65E0\u6CD5\u66F4\u65B0\u81EA\u52A8\u89E3\u9501\u8BBE\u7F6E\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+    keyringWorking: "\u6B63\u5728\u5904\u7406\u2026"
   },
   en: {
     browser: "Browser",
@@ -111,7 +121,17 @@ var messages = {
     invalidFile: "Choose a valid single-site cookie JSON file.",
     importFailed: "Cookie import failed. Please try again.",
     imported: "Cookies imported. Check your sign-in status on the website.",
-    manualOpen: "Cookies imported. Open the website in Chrome."
+    manualOpen: "Cookies imported. Open the website in Chrome.",
+    keyring: "Unlock keyring automatically",
+    keyringHelp: "Enter the separate Chrome keyring password. It will be saved to your Mac Keychain.",
+    keyringPassword: "Keyring password",
+    keyringSave: "Save and enable",
+    keyringForget: "Turn off automatic unlock",
+    keyringSaved: "Enabled. Chrome will unlock the keyring on its next launch.",
+    keyringForgotten: "Automatic unlock is off.",
+    invalidPassword: "Could not verify the password. Set up a keyring first and enter its existing password.",
+    keyringFailed: "Could not update automatic unlock. Please try again.",
+    keyringWorking: "Working\u2026"
   }
 };
 function localClient() {
@@ -172,6 +192,62 @@ function CookieImport({ t }) {
       }, children: t("cancel") })
     ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => picker.current?.click(), children: t("importCookies") }),
     status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: status.error ? "alert" : "status", children: t(status.key) })
+  ] });
+}
+function KeyringSettings({ t }) {
+  const input = (0, import_react.useRef)(null);
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [enabled, setEnabled] = (0, import_react.useState)(false);
+  const [working, setWorking] = (0, import_react.useState)(false);
+  const [message, setMessage] = (0, import_react.useState)(null);
+  const endpoint = new URL("api/dsh-tab-browser/keyring", document.baseURI);
+  const headers = { "X-DSH-Chrome": "1" };
+  async function toggle() {
+    if (!open) {
+      setMessage(null);
+      try {
+        const response = await fetch(endpoint, { headers });
+        if (!response.ok) throw new Error();
+        setEnabled((await response.json()).enabled);
+      } catch {
+        setMessage({ key: "keyringFailed", error: true });
+        return;
+      }
+    }
+    setOpen(!open);
+  }
+  async function change(method, body) {
+    setWorking(true);
+    setMessage(null);
+    try {
+      const response = await fetch(endpoint, { method, headers, body });
+      const result = await response.json();
+      if (!response.ok) {
+        setMessage({ key: result.error === "invalidPassword" ? "invalidPassword" : "keyringFailed", error: true });
+        return;
+      }
+      setEnabled(result.enabled);
+      setMessage({ key: result.enabled ? "keyringSaved" : "keyringForgotten" });
+    } catch {
+      setMessage({ key: "keyringFailed", error: true });
+    } finally {
+      setWorking(false);
+    }
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-import", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-expanded": open, disabled: working, onClick: toggle, children: t("keyring") }),
+    open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "chrome-keyring", onSubmit: (event) => {
+      event.preventDefault();
+      const password = input.current.value;
+      input.current.value = "";
+      void change("POST", password);
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: t("keyringHelp") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "password", ref: input, required: true, autoComplete: "off", "aria-label": t("keyringPassword"), maxLength: 1024 }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "submit", disabled: working, children: t(working ? "keyringWorking" : "keyringSave") }),
+      enabled && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: working, onClick: () => change("DELETE"), children: t("keyringForget") })
+    ] }),
+    message && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: message.error ? "alert" : "status", children: t(message.key) })
   ] });
 }
 function ChromeTab({ tab, t }) {
@@ -240,7 +316,10 @@ function ChromeTab({ tab, t }) {
     return () => window.removeEventListener("message", reconnect);
   }, [viewer]);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dsh-tab-chrome": "", children: [
-    viewer && local && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CookieImport, { t }),
+    viewer && local && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-tools", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CookieImport, { t }),
+      window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(KeyringSettings, { t })
+    ] }),
     viewer ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "iframe",
       {
@@ -278,6 +357,8 @@ var css = `
 [data-dsh-tab-chrome] .chrome-import{display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px}
 [data-dsh-tab-chrome] .chrome-import button{font-size:12px;padding:3px 8px}
 [data-dsh-tab-chrome] .chrome-import p{min-width:0;font-size:12px}
+[data-dsh-tab-chrome] .chrome-tools,[data-dsh-tab-chrome] .chrome-keyring{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+[data-dsh-tab-chrome] .chrome-keyring input{min-width:0;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:inherit;padding:3px 8px}
 `;
 var inject = ["sidebarRightTabs", "slots", "locale"];
 function apply(ctx) {

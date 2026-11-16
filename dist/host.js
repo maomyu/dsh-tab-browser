@@ -3763,7 +3763,7 @@ var require_websocket_server = __commonJS({
 });
 
 // src/chrome-runtime.js
-import { execFile, spawn } from "node:child_process";
+import { execFile as execFile2, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -3771,9 +3771,59 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-var exec = promisify(execFile);
+
+// src/mac-keyring.js
+import { execFile } from "node:child_process";
+var KEYCHAIN = "/usr/bin/security";
+var SERVICE = "com.dshdeck.dsh-tab-browser.keyring";
+var MAX_KEYRING_PASSWORD = 1024;
+var MacKeyring = class {
+  constructor(account) {
+    this.account = account;
+    this.supported = process.platform === "darwin";
+  }
+  command(args, input) {
+    return new Promise((resolve2) => {
+      const child = execFile(KEYCHAIN, args, { timeout: 12e3, maxBuffer: 8192 }, (error, stdout) => {
+        resolve2({ exit: error?.code ?? 0, stdout });
+      });
+      child.stdin.on("error", () => {
+      });
+      child.stdin.end(input);
+    });
+  }
+  async read() {
+    if (!this.supported) return void 0;
+    const result = await this.command(["find-generic-password", "-s", SERVICE, "-a", this.account, "-w"]);
+    const value = result.stdout.trim();
+    if (result.exit !== 0 || !/^(?:[\da-f]{2}){1,1024}$/u.test(value)) return void 0;
+    return Buffer.from(value, "hex");
+  }
+  async enabled() {
+    if (!this.supported) return false;
+    const result = await this.command(["find-generic-password", "-s", SERVICE, "-a", this.account]);
+    return result.exit === 0;
+  }
+  async save(password) {
+    await this.command(["-i"], `add-generic-password -U -s ${SERVICE} -a ${this.account} -w ${password.toString("hex")}
+`);
+    const saved = await this.read();
+    try {
+      return saved?.equals(password) === true;
+    } finally {
+      saved?.fill(0);
+    }
+  }
+  async forget() {
+    const result = await this.command(["delete-generic-password", "-s", SERVICE, "-a", this.account]);
+    return result.exit === 0 || result.exit === 44;
+  }
+};
+
+// src/chrome-runtime.js
+var exec = promisify(execFile2);
 var runtime = fileURLToPath(new URL("../runtime/", import.meta.url));
-var IMAGE = "dsh-tab-chrome:0.2.1";
+var IMAGE = "dsh-tab-chrome:0.2.2";
 var PROFILE_DIR = "/home/chrome/.config/dsh-google-chrome";
 var COOKIE_SOCKET = "/tmp/dsh-chrome-cookie-import.sock";
 var COLIMA_PROFILE = "dsh-chrome";
@@ -3797,6 +3847,7 @@ var ChromeRuntime = class {
     this.name = `dsh-chrome-${id}`;
     this.profileVolume = `dsh-chrome-profile-${id}`;
     this.dockerBin = executable("docker");
+    this.keyring = new MacKeyring(id);
     this.started = false;
   }
   docker(args, timeout) {
@@ -3853,6 +3904,7 @@ var ChromeRuntime = class {
       '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}} {{.Config.Image}}'
     ]).catch(() => "");
     const [running, volume, currentImage] = state.split(" ");
+    let unlocked = false;
     if (state && volume !== this.profileVolume) {
       throw new Error("Chrome \u5BB9\u5668\u540D\u79F0\u4E0E\u672C\u673A\u53E6\u4E00\u4E2A\u5BB9\u5668\u51B2\u7A81\u3002");
     }
@@ -3867,41 +3919,51 @@ var ChromeRuntime = class {
       }
       if (running === "true") {
         this.started = true;
-        await this.stop();
+        await this.stop({ graceful: false });
       } else if (state) {
         await this.docker(["container", "rm", this.name]);
       }
-      await this.docker([
-        "run",
-        "--detach",
-        "--rm",
-        "--init",
-        "--name",
-        this.name,
-        "--label",
-        `dsh-tab-chrome.profile=${this.profileVolume}`,
-        "--shm-size",
-        "768m",
-        "--cap-drop",
-        "ALL",
-        "--security-opt",
-        "no-new-privileges",
-        "--security-opt",
-        `seccomp=${join(runtime, "seccomp.json")}`,
-        "--mount",
-        `type=volume,source=${this.profileVolume},target=/home/chrome`,
-        IMAGE
-      ], 45e3);
+      const savedPassword = await this.keyring.read();
+      try {
+        await this.docker([
+          "run",
+          "--detach",
+          "--rm",
+          "--init",
+          "--name",
+          this.name,
+          "--hostname",
+          this.name,
+          "--label",
+          `dsh-tab-chrome.profile=${this.profileVolume}`,
+          "--shm-size",
+          "768m",
+          "--cap-drop",
+          "ALL",
+          "--security-opt",
+          "no-new-privileges",
+          "--security-opt",
+          `seccomp=${join(runtime, "seccomp.json")}`,
+          "--mount",
+          `type=volume,source=${this.profileVolume},target=/home/chrome`,
+          IMAGE,
+          ...savedPassword ? ["--unlock-keyring"] : []
+        ], 45e3);
+        if (savedPassword) unlocked = await this.keyringCommand("send", savedPassword);
+      } finally {
+        savedPassword?.fill(0);
+      }
     }
     this.started = true;
     try {
+      const singletonReady = unlocked ? ` && test -S ${PROFILE_DIR}/SingletonSocket` : "";
       for (let attempt = 0; attempt < 40; attempt++) {
         const ready = await this.docker([
           "exec",
           this.name,
           "sh",
           "-c",
-          `test -S /tmp/.X11-unix/X19 && test -S ${COOKIE_SOCKET} && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null`
+          `test -S /tmp/.X11-unix/X19 && test -S ${COOKIE_SOCKET} && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null${singletonReady}`
         ]).then(() => true, () => false);
         if (ready) return;
         await delay(500);
@@ -3922,9 +3984,26 @@ var ChromeRuntime = class {
   async open(url) {
     await this.docker(["exec", this.name, "google-chrome-stable", `--user-data-dir=${PROFILE_DIR}`, "--new-tab", url]);
   }
+  keyringCommand(action, password) {
+    return new Promise((resolve2) => {
+      const child = execFile2(this.dockerBin, [
+        "--context",
+        CONTEXT,
+        "exec",
+        "-i",
+        this.name,
+        "python3",
+        "/usr/local/bin/chrome-keyring.py",
+        action
+      ], { timeout: 24e3, maxBuffer: 1024 }, (error) => resolve2(!error));
+      child.stdin.on("error", () => {
+      });
+      child.stdin.end(password);
+    });
+  }
   async importCookies(cookies) {
     const result = await new Promise((resolve2, reject) => {
-      const child = execFile(this.dockerBin, [
+      const child = execFile2(this.dockerBin, [
         "--context",
         CONTEXT,
         "exec",
@@ -3943,12 +4022,21 @@ var ChromeRuntime = class {
     });
     if (result !== "ok") throw new Error("Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002");
   }
-  async stop() {
+  async stop({ graceful = true } = {}) {
     if (!this.started) return;
     this.started = false;
     try {
-      await this.docker(["exec", this.name, "sh", "-c", 'kill -TERM "$(pgrep -ox chrome)"'], 3e3);
-      await this.docker(["wait", this.name], 8e3);
+      const closed = graceful && await this.docker([
+        "exec",
+        this.name,
+        "python3",
+        "/usr/local/bin/chrome-cookie-pipe.py",
+        "--shutdown"
+      ], 7e3).then(() => true, () => false);
+      if (!closed) {
+        await this.docker(["exec", this.name, "sh", "-c", 'kill -TERM "$(pgrep -ox chrome)"'], 3e3);
+      }
+      await this.docker(["wait", this.name], 12e3);
     } catch {
       await this.docker(["stop", "--time", "4", this.name], 8e3).catch(() => {
       });
@@ -4090,6 +4178,17 @@ function prepareCookieImport(data, now = Date.now() / 1e3) {
 // src/host.js
 var CONNECT = "/api/dsh-tab-browser/connect";
 var IMPORT = "/api/dsh-tab-browser/cookies";
+var KEYRING = "/api/dsh-tab-browser/keyring";
+function localKeyringRequest(request) {
+  if (request.headers.get("x-dsh-chrome") !== "1") return false;
+  try {
+    const host = request.headers.get("host");
+    const origin = new URL(request.headers.get("origin") ?? (host ? `http://${host}` : request.url));
+    return origin.protocol === "dsh-app:" && origin.hostname === "app" || ["http:", "https:"].includes(origin.protocol) && ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname);
+  } catch {
+    return false;
+  }
+}
 function browserTarget(data, applicationOrigin) {
   if (data?.url === void 0) return data?.newPage === true ? "chrome://newtab/" : void 0;
   if (typeof data.url !== "string" || data.url.length > 16384) throw new Error("\u7F51\u9875\u5730\u5740\u65E0\u6548\u3002");
@@ -4172,6 +4271,41 @@ function apply(ctx) {
         }
       }
     }), "dsh-tab-browser: import cookies");
+    scope.effect(() => scope.connection.fetch.register({
+      path: KEYRING,
+      methods: ["GET", "POST", "DELETE"],
+      requestBody: "buffered",
+      async fetch(request) {
+        if (!chrome.keyring.supported || !localKeyringRequest(request)) return new Response(null, { status: 403 });
+        if (closing) return new Response(null, { status: 503 });
+        const result = (value, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
+        if (request.method === "GET") return result({ enabled: await chrome.keyring.enabled() });
+        const password = request.method === "POST" ? Buffer.from(await request.arrayBuffer()) : void 0;
+        if (password && (!password.length || password.length > MAX_KEYRING_PASSWORD || password.includes(0) || password.includes(10) || password.includes(13))) {
+          password.fill(0);
+          return result({ error: "invalidPassword" }, 400);
+        }
+        const work = navigation.catch(() => {
+        }).then(async () => {
+          if (request.method === "DELETE") {
+            return await chrome.keyring.forget() ? result({ enabled: false }) : result({ error: "keyringFailed" }, 503);
+          }
+          if (!viewer) await ensureViewer();
+          if (!await chrome.keyringCommand("verify", password)) return result({ error: "invalidPassword" }, 409);
+          if (!await chrome.keyring.save(password)) return result({ error: "keyringFailed" }, 503);
+          await chrome.keyringCommand("current", password);
+          return result({ enabled: true });
+        });
+        navigation = work;
+        try {
+          return await work;
+        } catch {
+          return result({ error: "keyringFailed" }, 503);
+        } finally {
+          password?.fill(0);
+        }
+      }
+    }), "dsh-tab-browser: keyring");
     scope.effect(() => async () => {
       closing = true;
       await pending?.catch(() => {

@@ -15,8 +15,11 @@ RUN set -eux; \
 
 RUN install -d -m 1777 /tmp/.X11-unix && rm -f /etc/machine-id \
     && ln -s /home/chrome/.local/share/dsh-machine-id /etc/machine-id
+RUN apt-get update && apt-get install -y --no-install-recommends python3-dbus \
+    && rm -rf /var/lib/apt/lists/*
 COPY --chmod=755 start-chrome.sh /usr/local/bin/start-chrome
 COPY chrome-cookie-pipe.py /usr/local/bin/chrome-cookie-pipe.py
+COPY chrome-keyring.py /usr/local/bin/chrome-keyring.py
 COPY --chmod=644 mimeapps.list /etc/xdg/mimeapps.list
 USER chrome
 ENV HOME=/home/chrome DISPLAY=:19 LANG=C.UTF-8

@@ -15,6 +15,11 @@ const messages = {
     importCookies: '导入网站 Cookie', importConfirm: '导入并打开', cancel: '取消', importing: '正在导入…',
     invalidFile: '请选择有效的单站点 Cookie JSON 文件。', importFailed: 'Cookie 导入失败，请重试。',
     imported: 'Cookie 已导入。请在网页确认登录状态。', manualOpen: 'Cookie 已导入。请在 Chrome 打开该网站。',
+    keyring: '密钥环自动解锁', keyringHelp: '输入独立 Chrome 原有的密钥环密码。密码保存到本机 macOS 钥匙串。',
+    keyringPassword: '密钥环密码', keyringSave: '保存并开启', keyringForget: '关闭自动解锁',
+    keyringSaved: '已开启。下次启动会自动解锁。', keyringForgotten: '已关闭自动解锁。',
+    invalidPassword: '密码未通过核对。请确认已创建密钥环，并输入原来设置的密码。',
+    keyringFailed: '无法更新自动解锁设置，请重试。', keyringWorking: '正在处理…',
   },
   en: {
     browser: 'Browser', title: 'Google Chrome', description: 'Browse the web in the sidebar',
@@ -25,6 +30,11 @@ const messages = {
     importCookies: 'Import site cookies', importConfirm: 'Import and open', cancel: 'Cancel', importing: 'Importing…',
     invalidFile: 'Choose a valid single-site cookie JSON file.', importFailed: 'Cookie import failed. Please try again.',
     imported: 'Cookies imported. Check your sign-in status on the website.', manualOpen: 'Cookies imported. Open the website in Chrome.',
+    keyring: 'Unlock keyring automatically', keyringHelp: 'Enter the separate Chrome keyring password. It will be saved to your Mac Keychain.',
+    keyringPassword: 'Keyring password', keyringSave: 'Save and enable', keyringForget: 'Turn off automatic unlock',
+    keyringSaved: 'Enabled. Chrome will unlock the keyring on its next launch.', keyringForgotten: 'Automatic unlock is off.',
+    invalidPassword: 'Could not verify the password. Set up a keyring first and enter its existing password.',
+    keyringFailed: 'Could not update automatic unlock. Please try again.', keyringWorking: 'Working…',
   },
 }
 
@@ -88,6 +98,66 @@ function CookieImport({ t }) {
       <button type="button" disabled={loading} onClick={() => { setSelected(null); setStatus(null) }}>{t('cancel')}</button>
     </> : <button type="button" onClick={() => picker.current?.click()}>{t('importCookies')}</button>}
     {status && <p role={status.error ? 'alert' : 'status'}>{t(status.key)}</p>}
+  </div>
+}
+
+function KeyringSettings({ t }) {
+  const input = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [enabled, setEnabled] = useState(false)
+  const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState(null)
+  const endpoint = new URL('api/dsh-tab-browser/keyring', document.baseURI)
+  const headers = { 'X-DSH-Chrome': '1' }
+
+  async function toggle() {
+    if (!open) {
+      setMessage(null)
+      try {
+        const response = await fetch(endpoint, { headers })
+        if (!response.ok) throw new Error()
+        setEnabled((await response.json()).enabled)
+      } catch {
+        setMessage({ key: 'keyringFailed', error: true })
+        return
+      }
+    }
+    setOpen(!open)
+  }
+
+  async function change(method, body) {
+    setWorking(true)
+    setMessage(null)
+    try {
+      const response = await fetch(endpoint, { method, headers, body })
+      const result = await response.json()
+      if (!response.ok) {
+        setMessage({ key: result.error === 'invalidPassword' ? 'invalidPassword' : 'keyringFailed', error: true })
+        return
+      }
+      setEnabled(result.enabled)
+      setMessage({ key: result.enabled ? 'keyringSaved' : 'keyringForgotten' })
+    } catch {
+      setMessage({ key: 'keyringFailed', error: true })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return <div className="chrome-import">
+    <button type="button" aria-expanded={open} disabled={working} onClick={toggle}>{t('keyring')}</button>
+    {open && <form className="chrome-keyring" onSubmit={event => {
+      event.preventDefault()
+      const password = input.current.value
+      input.current.value = ''
+      void change('POST', password)
+    }}>
+      <p>{t('keyringHelp')}</p>
+      <input type="password" ref={input} required autoComplete="off" aria-label={t('keyringPassword')} maxLength={1024} />
+      <button type="submit" disabled={working}>{t(working ? 'keyringWorking' : 'keyringSave')}</button>
+      {enabled && <button type="button" disabled={working} onClick={() => change('DELETE')}>{t('keyringForget')}</button>}
+    </form>}
+    {message && <p role={message.error ? 'alert' : 'status'}>{t(message.key)}</p>}
   </div>
 }
 
@@ -159,7 +229,10 @@ function ChromeTab({ tab, t }) {
   }, [viewer])
 
   return <div data-dsh-tab-chrome="">
-    {viewer && local && <CookieImport t={t} />}
+    {viewer && local && <div className="chrome-tools">
+      <CookieImport t={t} />
+      {window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes('Macintosh') && <KeyringSettings t={t} />}
+    </div>}
     {viewer ? <iframe key={viewer.generation} ref={frame} title="Google Chrome" src={viewer.url.href}
       sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" /> :
       <section className="chrome-start">
@@ -191,6 +264,8 @@ const css = `
 [data-dsh-tab-chrome] .chrome-import{display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px}
 [data-dsh-tab-chrome] .chrome-import button{font-size:12px;padding:3px 8px}
 [data-dsh-tab-chrome] .chrome-import p{min-width:0;font-size:12px}
+[data-dsh-tab-chrome] .chrome-tools,[data-dsh-tab-chrome] .chrome-keyring{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+[data-dsh-tab-chrome] .chrome-keyring input{min-width:0;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:inherit;padding:3px 8px}
 `
 
 export const inject = ['sidebarRightTabs', 'slots', 'locale']

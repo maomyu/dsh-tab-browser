@@ -4,7 +4,7 @@ set -eu
 umask 077
 if [ "${1-}" != '--session' ]; then
   dbus-uuidgen --ensure="$HOME/.local/share/dsh-machine-id"
-  exec dbus-run-session -- "$0" --session
+  exec dbus-run-session -- "$0" --session "$@"
 fi
 export XDG_RUNTIME_DIR="$(mktemp -d)"
 export XAUTHORITY="$XDG_RUNTIME_DIR/Xauthority"
@@ -32,6 +32,10 @@ openbox --sm-disable &
 desktop=$!
 dbus-update-activation-environment DISPLAY XAUTHORITY XDG_RUNTIME_DIR
 gnome-keyring-daemon --start --components=secrets >/dev/null
+printf '%s\n' "$DBUS_SESSION_BUS_ADDRESS" > /tmp/dsh-chrome-session-bus
+if [ "${2-}" = '--unlock-keyring' ]; then
+  python3 /usr/local/bin/chrome-keyring.py startup || true
+fi
 profile="$HOME/.config/dsh-google-chrome"
 old_profile="$HOME/.config/google-chrome"
 if [ ! -e "$profile" ] && [ -d "$old_profile" ] && [ ! -L "$old_profile" ]; then

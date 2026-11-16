@@ -12,17 +12,21 @@ SOCKET_PATH = '/tmp/dsh-chrome-cookie-import.sock'
 MAX_REQUEST = 128 * 1024
 
 
-def import_cookies(connection, chrome_input, chrome_output, command_id):
+def handle_request(connection, chrome_input, chrome_output, command_id):
     connection.settimeout(5)
     with connection.makefile('rb') as incoming:
         payload = incoming.readline(MAX_REQUEST + 2)
     if not payload.endswith(b'\n') or len(payload) > MAX_REQUEST + 1:
         return False
-    cookies = json.loads(payload)
-    if not isinstance(cookies, list) or not cookies or len(cookies) > 200:
+    request = json.loads(payload)
+    message = {'id': command_id}
+    if request == {'action': 'shutdown'}:
+        message['method'] = 'Browser.close'
+    elif isinstance(request, list) and 0 < len(request) <= 200:
+        message.update(method='Storage.setCookies', params={'cookies': request})
+    else:
         return False
 
-    message = {'id': command_id, 'method': 'Storage.setCookies', 'params': {'cookies': cookies}}
     chrome_input.write(json.dumps(message).encode() + b'\0')
     chrome_input.flush()
     deadline = time.monotonic() + 20
@@ -67,7 +71,7 @@ def main():
                 with connection:
                     command_id += 1
                     try:
-                        ok = import_cookies(connection, chrome_input, bridge_read, command_id)
+                        ok = handle_request(connection, chrome_input, bridge_read, command_id)
                     except (OSError, ValueError):
                         ok = False
                     try:
@@ -83,13 +87,18 @@ def main():
             os.unlink(SOCKET_PATH)
 
 
-if sys.argv[1:] == ['--import']:
+if sys.argv[1:] in (['--import'], ['--shutdown']):
+    shutdown = sys.argv[1] == '--shutdown'
+    payload = b'{"action":"shutdown"}\n' if shutdown else sys.stdin.buffer.read(MAX_REQUEST + 2)
     with socket.socket(socket.AF_UNIX) as connection:
-        connection.settimeout(26)
+        connection.settimeout(6 if shutdown else 26)
         connection.connect(SOCKET_PATH)
-        connection.sendall(sys.stdin.buffer.read(MAX_REQUEST + 2))
+        connection.sendall(payload)
         connection.shutdown(socket.SHUT_WR)
         with connection.makefile('rb') as reply:
-            sys.stdout.buffer.write(reply.readline(32))
+            result = reply.readline(32)
+            if shutdown:
+                sys.exit(0 if result == b'ok\n' else 1)
+            sys.stdout.buffer.write(result)
 else:
     main()

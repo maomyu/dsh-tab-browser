@@ -6,10 +6,11 @@ import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { MacKeyring } from './mac-keyring.js'
 
 const exec = promisify(execFile)
 const runtime = fileURLToPath(new URL('../runtime/', import.meta.url))
-const IMAGE = 'dsh-tab-chrome:0.2.1'
+const IMAGE = 'dsh-tab-chrome:0.2.2'
 const PROFILE_DIR = '/home/chrome/.config/dsh-google-chrome'
 const COOKIE_SOCKET = '/tmp/dsh-chrome-cookie-import.sock'
 const COLIMA_PROFILE = 'dsh-chrome'
@@ -36,6 +37,7 @@ export class ChromeRuntime {
     this.name = `dsh-chrome-${id}`
     this.profileVolume = `dsh-chrome-profile-${id}`
     this.dockerBin = executable('docker')
+    this.keyring = new MacKeyring(id)
     this.started = false
   }
 
@@ -71,6 +73,7 @@ export class ChromeRuntime {
     const state = await this.docker(['container', 'inspect', this.name, '--format',
       '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}} {{.Config.Image}}']).catch(() => '')
     const [running, volume, currentImage] = state.split(' ')
+    let unlocked = false
     if (state && volume !== this.profileVolume) {
       throw new Error('Chrome 容器名称与本机另一个容器冲突。')
     }
@@ -82,20 +85,28 @@ export class ChromeRuntime {
       }
       if (running === 'true') {
         this.started = true
-        await this.stop()
+        await this.stop({ graceful: false })
       } else if (state) {
         await this.docker(['container', 'rm', this.name])
       }
-      await this.docker(['run', '--detach', '--rm', '--init', '--name', this.name,
-        '--label', `dsh-tab-chrome.profile=${this.profileVolume}`, '--shm-size', '768m', '--cap-drop', 'ALL',
-        '--security-opt', 'no-new-privileges', '--security-opt', `seccomp=${join(runtime, 'seccomp.json')}`,
-        '--mount', `type=volume,source=${this.profileVolume},target=/home/chrome`, IMAGE], 45_000)
+      const savedPassword = await this.keyring.read()
+      try {
+        await this.docker(['run', '--detach', '--rm', '--init', '--name', this.name, '--hostname', this.name,
+          '--label', `dsh-tab-chrome.profile=${this.profileVolume}`, '--shm-size', '768m', '--cap-drop', 'ALL',
+          '--security-opt', 'no-new-privileges', '--security-opt', `seccomp=${join(runtime, 'seccomp.json')}`,
+          '--mount', `type=volume,source=${this.profileVolume},target=/home/chrome`, IMAGE,
+          ...(savedPassword ? ['--unlock-keyring'] : [])], 45_000)
+        if (savedPassword) unlocked = await this.keyringCommand('send', savedPassword)
+      } finally {
+        savedPassword?.fill(0)
+      }
     }
     this.started = true
     try {
+      const singletonReady = unlocked ? ` && test -S ${PROFILE_DIR}/SingletonSocket` : ''
       for (let attempt = 0; attempt < 40; attempt++) {
         const ready = await this.docker(['exec', this.name, 'sh', '-c',
-          `test -S /tmp/.X11-unix/X19 && test -S ${COOKIE_SOCKET} && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null`]).then(() => true, () => false)
+          `test -S /tmp/.X11-unix/X19 && test -S ${COOKIE_SOCKET} && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null${singletonReady}`]).then(() => true, () => false)
         if (ready) return
         await delay(500)
       }
@@ -115,6 +126,15 @@ export class ChromeRuntime {
     await this.docker(['exec', this.name, 'google-chrome-stable', `--user-data-dir=${PROFILE_DIR}`, '--new-tab', url])
   }
 
+  keyringCommand(action, password) {
+    return new Promise(resolve => {
+      const child = execFile(this.dockerBin, ['--context', CONTEXT, 'exec', '-i', this.name,
+        'python3', '/usr/local/bin/chrome-keyring.py', action], { timeout: 24_000, maxBuffer: 1024 }, error => resolve(!error))
+      child.stdin.on('error', () => {})
+      child.stdin.end(password)
+    })
+  }
+
   async importCookies(cookies) {
     const result = await new Promise((resolve, reject) => {
       const child = execFile(this.dockerBin, ['--context', CONTEXT, 'exec', '-i', this.name,
@@ -128,12 +148,17 @@ export class ChromeRuntime {
     if (result !== 'ok') throw new Error('Chrome 无法导入 Cookie。')
   }
 
-  async stop() {
+  async stop({ graceful = true } = {}) {
     if (!this.started) return
     this.started = false
     try {
-      await this.docker(['exec', this.name, 'sh', '-c', 'kill -TERM "$(pgrep -ox chrome)"'], 3_000)
-      await this.docker(['wait', this.name], 8_000)
+      // Chrome flushes its persistent cookie store before exiting.
+      const closed = graceful && await this.docker(['exec', this.name,
+        'python3', '/usr/local/bin/chrome-cookie-pipe.py', '--shutdown'], 7_000).then(() => true, () => false)
+      if (!closed) {
+        await this.docker(['exec', this.name, 'sh', '-c', 'kill -TERM "$(pgrep -ox chrome)"'], 3_000)
+      }
+      await this.docker(['wait', this.name], 12_000)
     } catch {
       await this.docker(['stop', '--time', '4', this.name], 8_000).catch(() => {})
     }
