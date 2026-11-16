@@ -15,7 +15,7 @@ await Promise.all([
     banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
   }),
   build({
-    absWorkingDir: root, entryPoints: ['src/viewer.js'], outdir, bundle: true,
+    absWorkingDir: root, entryPoints: ['src/viewer.js', 'src/local-chrome-viewer.js'], outdir, bundle: true,
     platform: 'browser', format: 'esm', target: 'es2023', legalComments: 'linked',
   }),
   build({

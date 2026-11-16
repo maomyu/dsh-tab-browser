@@ -1,0 +1,8 @@
+html { color-scheme: light dark; }
+body { width: 290px; padding: 16px; margin: 0; font: 14px system-ui, sans-serif; }
+h1 { font-size: 17px; margin: 0 0 14px; }
+form { display: grid; gap: 10px; }
+input, button { font: inherit; border: 1px solid GrayText; border-radius: 6px; padding: 7px 9px; }
+button { cursor: pointer; justify-self: start; }
+p { margin: 12px 0 0; color: GrayText; white-space: normal; overflow-wrap: anywhere; }
+p:empty, [hidden] { display: none; }
