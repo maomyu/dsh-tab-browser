@@ -2245,16 +2245,16 @@ var require_extension = __commonJS({
         throw new SyntaxError("Unexpected end of input");
       }
       if (end === -1) end = i;
-      const token2 = header.slice(start, end);
+      const token = header.slice(start, end);
       if (extensionName === void 0) {
-        push(offers, token2, params);
+        push(offers, token, params);
       } else {
         if (paramName === void 0) {
-          push(params, token2, true);
+          push(params, token, true);
         } else if (mustUnescape) {
-          push(params, paramName, token2.replace(/\\/g, ""));
+          push(params, paramName, token.replace(/\\/g, ""));
         } else {
-          push(params, paramName, token2);
+          push(params, paramName, token);
         }
         push(offers, extensionName, params);
       }
@@ -2289,7 +2289,7 @@ var require_websocket = __commonJS({
     var net = __require("net");
     var querystring = __require("querystring");
     var tls = __require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash2 } = __require("crypto");
+    var { randomBytes: randomBytes2, createHash: createHash2 } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2843,7 +2843,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes3(16).toString("base64");
+      const key = randomBytes2(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -3773,7 +3773,9 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 var exec = promisify(execFile);
 var runtime = fileURLToPath(new URL("../runtime/", import.meta.url));
-var IMAGE = "dsh-tab-chrome:0.1.0";
+var IMAGE = "dsh-tab-chrome:0.2.0";
+var PROFILE_DIR = "/home/chrome/.config/dsh-google-chrome";
+var COOKIE_SOCKET = "/tmp/dsh-chrome-cookie-import.sock";
 var COLIMA_PROFILE = "dsh-chrome";
 var CONTEXT = process.platform === "darwin" ? `colima-${COLIMA_PROFILE}` : "default";
 function executable(name) {
@@ -3848,13 +3850,13 @@ var ChromeRuntime = class {
       "inspect",
       this.name,
       "--format",
-      '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}}'
+      '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}} {{.Config.Image}}'
     ]).catch(() => "");
-    if (state && state !== `true ${this.profileVolume}` && state !== `false ${this.profileVolume}`) {
+    const [running, volume, currentImage] = state.split(" ");
+    if (state && volume !== this.profileVolume) {
       throw new Error("Chrome \u5BB9\u5668\u540D\u79F0\u4E0E\u672C\u673A\u53E6\u4E00\u4E2A\u5BB9\u5668\u51B2\u7A81\u3002");
     }
-    if (state !== `true ${this.profileVolume}`) {
-      if (state) await this.docker(["container", "rm", this.name]);
+    if (running !== "true" || currentImage !== IMAGE) {
       const image = await this.docker(["image", "inspect", IMAGE, "--format", "{{.Id}}"]).catch(() => "");
       if (!image) {
         try {
@@ -3862,6 +3864,12 @@ var ChromeRuntime = class {
         } catch (error) {
           throw new Error(`Chrome \u4E0B\u8F7D\u6216\u6784\u5EFA\u5931\u8D25\u3002${error.message}`);
         }
+      }
+      if (running === "true") {
+        this.started = true;
+        await this.stop();
+      } else if (state) {
+        await this.docker(["container", "rm", this.name]);
       }
       await this.docker([
         "run",
@@ -3893,7 +3901,7 @@ var ChromeRuntime = class {
           this.name,
           "sh",
           "-c",
-          "test -S /tmp/.X11-unix/X19 && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null"
+          `test -S /tmp/.X11-unix/X19 && test -S ${COOKIE_SOCKET} && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null`
         ]).then(() => true, () => false);
         if (ready) return;
         await delay(500);
@@ -3912,7 +3920,28 @@ var ChromeRuntime = class {
     );
   }
   async open(url) {
-    await this.docker(["exec", this.name, "google-chrome-stable", "--new-tab", url]);
+    await this.docker(["exec", this.name, "google-chrome-stable", `--user-data-dir=${PROFILE_DIR}`, "--new-tab", url]);
+  }
+  async importCookies(cookies) {
+    const result = await new Promise((resolve2, reject) => {
+      const child = execFile(this.dockerBin, [
+        "--context",
+        CONTEXT,
+        "exec",
+        "-i",
+        this.name,
+        "python3",
+        "/usr/local/bin/chrome-cookie-pipe.py",
+        "--import"
+      ], { timeout: 3e4, maxBuffer: 1024 }, (error, stdout) => {
+        if (error) reject(new Error("Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002"));
+        else resolve2(stdout.trim());
+      });
+      child.stdin.on("error", () => {
+      });
+      child.stdin.end(JSON.stringify(cookies) + "\n");
+    });
+    if (result !== "ok") throw new Error("Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002");
   }
   async stop() {
     if (!this.started) return;
@@ -4017,208 +4046,50 @@ async function openViewer(chrome) {
   };
 }
 
-// src/local-chrome-server.js
-import { randomBytes as randomBytes2 } from "node:crypto";
-import { readFile as readFile2 } from "node:fs/promises";
-import { createServer as createServer2 } from "node:http";
-
-// chrome-extension/protocol.js
-var extensionOrigin = "chrome-extension://pfofieglhcmnikhifndndgmohihfddla";
-var maxFrameBytes = 2 * 1024 * 1024;
-function webAddress(value) {
-  if (typeof value !== "string" || value.length > 16384) return void 0;
+// src/cookie-import.js
+var MAX_COOKIE_FILE = 96 * 1024;
+var sameSites = /* @__PURE__ */ new Map([["lax", "Lax"], ["strict", "Strict"], ["no_restriction", "None"], ["none", "None"]]);
+function prepareCookieImport(data, now = Date.now() / 1e3) {
+  const invalid = () => new Error("\u8BF7\u9009\u62E9\u4E00\u4E2A\u6709\u6548\u7684\u5355\u7AD9\u70B9 Cookie JSON \u6587\u4EF6\u3002");
+  if (typeof data?.origin !== "string" || !Array.isArray(data.cookies) || !data.cookies.length || data.cookies.length > 200) {
+    throw invalid();
+  }
+  let target;
   try {
-    const url = new URL(value);
-    if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) return url.href;
+    target = new URL(data.origin);
   } catch {
+    throw invalid();
   }
-}
-function limit(value, min, max) {
-  return Number.isFinite(value) && value >= min && value <= max;
-}
-function inputMessage(value) {
-  if (!value || typeof value !== "object") return void 0;
-  if (value.type === "text") {
-    if (typeof value.text === "string" && value.text.length > 0 && value.text.length <= 4096) return { type: "text", text: value.text };
-    return void 0;
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname);
+  if (target.protocol !== "https:" && !(local && target.protocol === "http:") || target.username || target.password || target.origin !== data.origin) throw invalid();
+  const cookies = [];
+  for (const entry of data.cookies) {
+    if (entry?.partitionKey || typeof entry?.expirationDate === "number" && entry.expirationDate <= now) continue;
+    const domain = typeof entry?.domain === "string" ? entry.domain.toLowerCase().replace(/^\./u, "") : "";
+    const hostOnly = entry?.hostOnly ?? !entry?.domain?.startsWith?.(".");
+    if (!domain || domain !== target.hostname && (hostOnly || !target.hostname.endsWith("." + domain)) || typeof entry.name !== "string" || !entry.name || typeof entry.value !== "string" || entry.name.length + entry.value.length > 4096 || /[\x00-\x1f\x7f;]/u.test(entry.name + entry.value) || typeof entry.path !== "string" || !entry.path.startsWith("/") || entry.path.length > 1024) throw invalid();
+    const cookie = {
+      name: entry.name,
+      value: entry.value,
+      url: target.origin,
+      path: entry.path,
+      secure: entry.secure === true,
+      httpOnly: entry.httpOnly === true
+    };
+    if (!hostOnly) cookie.domain = "." + domain;
+    const sameSite = sameSites.get(typeof entry.sameSite === "string" ? entry.sameSite.toLowerCase() : "");
+    if (sameSite) cookie.sameSite = sameSite;
+    if (Number.isFinite(entry.expirationDate) && entry.session !== true) cookie.expires = entry.expirationDate;
+    cookies.push(cookie);
   }
-  const { modifiers } = value;
-  if (!Number.isInteger(modifiers) || !limit(modifiers, 0, 15)) return void 0;
-  if (value.type === "key") {
-    const { down, key, code, repeat, keyCode } = value;
-    if (typeof down !== "boolean" || typeof key !== "string" || !limit(key.length, 1, 32) || typeof code !== "string" || !/^[a-zA-Z0-9]{0,40}$/u.test(code) || !Number.isInteger(keyCode) || !limit(keyCode, 0, 255)) return void 0;
-    return { type: "key", down, key, code, repeat: repeat === true, keyCode, modifiers };
-  }
-  if (value.type === "pointer") {
-    const { action, x, y, button, buttons } = value;
-    if (!["press", "release", "move", "wheel"].includes(action) || !limit(x, 0, 1) || !limit(y, 0, 1) || !Number.isInteger(buttons) || !limit(buttons, 0, 7) || !["none", "left", "middle", "right"].includes(button)) return void 0;
-    const result = { type: "pointer", action, x, y, button, buttons, modifiers };
-    if (action === "wheel") {
-      if (!limit(value.dx, -4e3, 4e3) || !limit(value.dy, -4e3, 4e3)) return void 0;
-      result.dx = value.dx;
-      result.dy = value.dy;
-    } else if (action === "press" || action === "release") {
-      result.clickCount = value.clickCount === 2 ? 2 : 1;
-    }
-    return result;
-  }
-}
-
-// src/local-chrome-server.js
-var html2 = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>\u672C\u673A Chrome</title><link rel="stylesheet" href="viewer.css">
-<main id="screen"><img id="frame" alt="\u672C\u673A Chrome \u7F51\u9875" draggable="false" hidden><textarea id="keyboard" aria-label="\u7F51\u9875\u952E\u76D8\u8F93\u5165" autocomplete="off" spellcheck="false"></textarea><p id="status" role="status">\u7B49\u5F85 Chrome \u6269\u5C55\u5171\u4EAB\u5F53\u524D\u7F51\u9875\u2026</p></main>
-<script type="module" src="viewer.js"></script></html>`;
-var css2 = `html,body,#screen{width:100%;height:100%;margin:0;overflow:hidden}
-body{background:#181a1b;color:#e8eaed;font:14px system-ui,sans-serif}
-#screen{display:grid;grid-template: minmax(0,1fr) / minmax(0,1fr);place-items:center;position:relative}
-#frame{display:block;max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;touch-action:none}
-#frame[hidden],#status[hidden]{display:none}
-#keyboard{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;padding:0;border:0;resize:none}`;
-var lifetime = 5 * 60 * 1e3;
-var token = () => randomBytes2(32).toString("base64url");
-async function openLocalChrome() {
-  const script = await readFile2(new URL("./local-chrome-viewer.js", import.meta.url));
-  const path = `/${token()}/`;
-  const peers = /* @__PURE__ */ new Set();
-  const sockets = new import_websocket_server.default({ noServer: true, maxPayload: maxFrameBytes, perMessageDeflate: false });
-  let origin;
-  let host;
-  let pair;
-  let chrome;
-  let ready = false;
-  let frame;
-  let closing = false;
-  const assets = /* @__PURE__ */ new Map([
-    [path, ["text/html; charset=utf-8", html2]],
-    [`${path}viewer.css`, ["text/css; charset=utf-8", css2]],
-    [`${path}viewer.js`, ["text/javascript; charset=utf-8", script]]
-  ]);
-  function send(socket, data) {
-    if (socket?.readyState === import_websocket.default.OPEN) socket.send(data);
-  }
-  function setWatching() {
-    if (!peers.size) frame = void 0;
-    send(chrome, JSON.stringify({ type: "watch", visible: peers.size > 0 }));
-  }
-  function broadcast(data) {
-    for (const peer of peers) if (peer.bufferedAmount < 256 * 1024) send(peer, data);
-  }
-  function endSharing() {
-    const previous = chrome;
-    chrome = void 0;
-    ready = false;
-    frame = void 0;
-    pair = void 0;
-    previous?.close(1e3, "Sharing ended");
-    broadcast('{"type":"ended"}');
-  }
-  function onChrome(socket) {
-    chrome = socket;
-    pair = void 0;
-    setWatching();
-    socket.on("message", (raw, binary) => {
-      if (binary || chrome !== socket) return;
-      let value;
-      try {
-        value = JSON.parse(raw.toString());
-      } catch {
-        return;
-      }
-      if (value?.type === "ready") {
-        ready = true;
-        broadcast('{"type":"ready"}');
-      } else if (value?.type === "frame" && ready && peers.size && typeof value.data === "string" && value.data.startsWith("/9j/")) {
-        frame = JSON.stringify({ type: "frame", data: value.data });
-        broadcast(frame);
-      }
-    });
-    socket.on("error", () => socket.terminate());
-    socket.once("close", () => {
-      if (chrome === socket) endSharing();
-    });
-  }
-  function onViewer(socket) {
-    peers.add(socket);
-    if (ready) send(socket, '{"type":"ready"}');
-    if (frame) send(socket, frame);
-    setWatching();
-    socket.on("message", (raw, binary) => {
-      if (binary || !ready || raw.length > 2e4) return;
-      let value;
-      try {
-        value = inputMessage(JSON.parse(raw.toString()));
-      } catch {
-        return;
-      }
-      if (value) send(chrome, JSON.stringify(value));
-    });
-    socket.on("error", () => socket.terminate());
-    socket.once("close", () => {
-      peers.delete(socket);
-      setWatching();
-    });
-  }
-  const server = createServer2((request, response) => {
-    const asset = request.method === "GET" && request.headers.host === host && assets.get(request.url);
-    if (!asset) {
-      response.writeHead(404).end();
-      return;
-    }
-    const [type, body] = asset;
-    response.writeHead(200, {
-      "Content-Type": type,
-      "Cache-Control": "no-store",
-      "Referrer-Policy": "no-referrer",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": `default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src ws://${host}; base-uri 'none'; form-action 'none'; frame-ancestors dsh-app: http://127.0.0.1:* http://localhost:*`
-    }).end(body);
-  });
-  server.on("upgrade", (request, socket, head) => {
-    if (!closing && request.headers.host === host) {
-      if (request.headers.origin === origin && request.url === `${path}input`) {
-        sockets.handleUpgrade(request, socket, head, onViewer);
-        return;
-      }
-      if (request.headers.origin === extensionOrigin && pair && Date.now() < pair.expires && request.url === pair.path) {
-        sockets.handleUpgrade(request, socket, head, onChrome);
-        return;
-      }
-    }
-    socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
-  });
-  await new Promise((resolve2, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve2);
-  });
-  host = `127.0.0.1:${server.address().port}`;
-  origin = `http://${host}`;
-  return {
-    describe(renew = false) {
-      if (!chrome && (renew || !pair || Date.now() >= pair.expires)) {
-        pair = { path: `/chrome/${token()}`, expires: Date.now() + lifetime };
-      }
-      return { url: origin + path, code: pair ? `ws://${host}${pair.path}` : null, linked: ready };
-    },
-    navigate(value) {
-      const url = webAddress(value);
-      if (ready && url) send(chrome, JSON.stringify({ type: "navigate", url }));
-    },
-    endSharing,
-    close: () => new Promise((resolve2) => {
-      closing = true;
-      endSharing();
-      for (const peer of sockets.clients) peer.terminate();
-      sockets.close();
-      server.close(resolve2);
-      server.closeAllConnections();
-    })
-  };
+  if (!cookies.length) throw new Error("\u6587\u4EF6\u4E2D\u6CA1\u6709\u53EF\u5BFC\u5165\u7684 Cookie\u3002");
+  if (new TextEncoder().encode(JSON.stringify(cookies)).length > 128 * 1024) throw invalid();
+  return { origin: target.origin, cookies };
 }
 
 // src/host.js
 var CONNECT = "/api/dsh-tab-browser/connect";
-var LOCAL = "/api/dsh-tab-browser/local";
+var IMPORT = "/api/dsh-tab-browser/cookies";
 function browserTarget(data, applicationOrigin) {
   if (data?.url === void 0) return data?.newPage === true ? "chrome://newtab/" : void 0;
   if (typeof data.url !== "string" || data.url.length > 16384) throw new Error("\u7F51\u9875\u5730\u5740\u65E0\u6548\u3002");
@@ -4233,7 +4104,6 @@ function apply(ctx) {
     const chrome = new ChromeRuntime(scope.get("profileContext")?.name);
     let pending;
     let viewer;
-    let local;
     let closing = false;
     let navigation = Promise.resolve();
     async function connect() {
@@ -4241,6 +4111,9 @@ function apply(ctx) {
       viewer ??= await openViewer(chrome);
       return viewer.url;
     }
+    const ensureViewer = () => pending ??= connect().finally(() => {
+      pending = void 0;
+    });
     scope.effect(() => scope.connection.fetch.register({
       path: CONNECT,
       methods: ["POST"],
@@ -4254,11 +4127,8 @@ function apply(ctx) {
         } catch {
           return Response.json({ error: "\u7F51\u9875\u5730\u5740\u65E0\u6548\u3002" }, { status: 400 });
         }
-        pending ??= connect().finally(() => {
-          pending = void 0;
-        });
         try {
-          const url = await pending;
+          const url = await ensureViewer();
           if (target) {
             navigation = navigation.catch(() => {
             }).then(() => chrome.open(target));
@@ -4271,47 +4141,43 @@ function apply(ctx) {
       }
     }), "dsh-tab-browser: connect");
     scope.effect(() => scope.connection.fetch.register({
-      path: LOCAL,
+      path: IMPORT,
       methods: ["POST"],
       requestBody: "buffered",
       async fetch(request) {
         if (request.headers.get("x-dsh-chrome") !== "1") return new Response(null, { status: 403 });
         if (closing) return new Response(null, { status: 503 });
-        let data;
-        let target;
+        const noStore = { "Cache-Control": "no-store" };
+        let plan;
         try {
-          data = await request.json();
-          if (!["open", "renew", "stop"].includes(data?.action)) throw new Error();
-          target = browserTarget(data, new URL(request.url).origin);
+          const body = await request.arrayBuffer();
+          if (body.byteLength > MAX_COOKIE_FILE) throw new Error();
+          plan = prepareCookieImport(JSON.parse(new TextDecoder().decode(body)));
+          browserTarget({ url: plan.origin }, new URL(request.url).origin);
         } catch {
-          return Response.json({ error: "\u672C\u673A Chrome \u8BF7\u6C42\u65E0\u6548\u3002" }, { status: 400 });
+          return Response.json({ error: "Cookie \u6587\u4EF6\u65E0\u6548\u6216\u8D85\u51FA\u5927\u5C0F\u9650\u5236\u3002" }, { status: 400, headers: noStore });
         }
+        const work = navigation.catch(() => {
+        }).then(async () => {
+          if (!viewer) await ensureViewer();
+          await chrome.importCookies(plan.cookies);
+          return chrome.open(plan.origin).then(() => true, () => false);
+        });
+        navigation = work;
         try {
-          if (data.action === "stop") {
-            const bridge2 = await local;
-            bridge2?.endSharing();
-            return new Response(null, { status: 204 });
-          }
-          local ??= openLocalChrome().catch((error) => {
-            local = void 0;
-            throw error;
-          });
-          const bridge = await local;
-          if (target) bridge.navigate(target);
-          return Response.json(bridge.describe(data.action === "renew"), { headers: { "Cache-Control": "no-store" } });
+          const opened = await work;
+          return Response.json({ count: plan.cookies.length, opened }, { headers: noStore });
         } catch {
-          return Response.json({ error: "\u672C\u673A Chrome \u8FDE\u63A5\u670D\u52A1\u65E0\u6CD5\u542F\u52A8\u3002" }, { status: 503 });
+          return Response.json({ error: "\u72EC\u7ACB Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002" }, { status: 503, headers: noStore });
         }
       }
-    }), "dsh-tab-browser: local Chrome");
+    }), "dsh-tab-browser: import cookies");
     scope.effect(() => async () => {
       closing = true;
       await pending?.catch(() => {
       });
       await navigation.catch(() => {
       });
-      await (await local?.catch(() => {
-      }))?.close();
       await viewer?.close();
       await chrome.stop();
     }, "dsh-tab-browser: close local browser");

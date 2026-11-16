@@ -1,15 +1,11 @@
 <!doctype html>
-<html lang="zh-CN"><meta charset="utf-8"><title>DSH 本机 Chrome</title>
+<html lang="zh-CN"><meta charset="utf-8"><title>DSH 抖音 Cookie 导出</title>
 <link rel="stylesheet" href="popup.css">
 <main>
-  <h1>DSH 本机 Chrome</h1>
-  <form id="pair">
-    <label for="code">DSH 浏览器 Tab 的连接码</label>
-    <input id="code" type="text" required autocomplete="off" spellcheck="false">
-    <button type="submit">共享当前网页</button>
-  </form>
-  <button type="button" id="stop" hidden>结束共享</button>
-  <p id="status" role="status"></p>
+  <h1>导出抖音 Cookie</h1>
+  <button type="button" id="save" disabled>保存到本机</button>
+  <p id="status" role="status">选中已登录的抖音标签页，再打开扩展。</p>
+  <p>文件包含网站登录凭据。导入 DSH 后请删除文件。</p>
 </main>
 <script type="module" src="popup.js"></script>
 </html>

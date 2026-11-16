@@ -1,9 +1,9 @@
 import { ChromeRuntime } from './chrome-runtime.js'
 import { openViewer } from './viewer-server.js'
-import { openLocalChrome } from './local-chrome-server.js'
+import { MAX_COOKIE_FILE, prepareCookieImport } from './cookie-import.js'
 
 const CONNECT = '/api/dsh-tab-browser/connect'
-const LOCAL = '/api/dsh-tab-browser/local'
+const IMPORT = '/api/dsh-tab-browser/cookies'
 
 export function browserTarget(data, applicationOrigin) {
   if (data?.url === undefined) return data?.newPage === true ? 'chrome://newtab/' : undefined
@@ -20,7 +20,6 @@ export function apply(ctx) {
     const chrome = new ChromeRuntime(scope.get('profileContext')?.name)
     let pending
     let viewer
-    let local
     let closing = false
     let navigation = Promise.resolve()
 
@@ -29,6 +28,7 @@ export function apply(ctx) {
       viewer ??= await openViewer(chrome)
       return viewer.url
     }
+    const ensureViewer = () => pending ??= connect().finally(() => { pending = undefined })
 
     scope.effect(() => scope.connection.fetch.register({
       path: CONNECT, methods: ['POST'], requestBody: 'buffered',
@@ -38,9 +38,8 @@ export function apply(ctx) {
         let target
         try { target = browserTarget(await request.json(), new URL(request.url).origin) }
         catch { return Response.json({ error: '网页地址无效。' }, { status: 400 }) }
-        pending ??= connect().finally(() => { pending = undefined })
         try {
-          const url = await pending
+          const url = await ensureViewer()
           if (target) {
             navigation = navigation.catch(() => {}).then(() => chrome.open(target))
             await navigation
@@ -53,38 +52,39 @@ export function apply(ctx) {
     }), 'dsh-tab-browser: connect')
 
     scope.effect(() => scope.connection.fetch.register({
-      path: LOCAL, methods: ['POST'], requestBody: 'buffered',
+      path: IMPORT, methods: ['POST'], requestBody: 'buffered',
       async fetch(request) {
         if (request.headers.get('x-dsh-chrome') !== '1') return new Response(null, { status: 403 })
         if (closing) return new Response(null, { status: 503 })
-        let data
-        let target
+        const noStore = { 'Cache-Control': 'no-store' }
+        let plan
         try {
-          data = await request.json()
-          if (!['open', 'renew', 'stop'].includes(data?.action)) throw new Error()
-          target = browserTarget(data, new URL(request.url).origin)
-        } catch { return Response.json({ error: '本机 Chrome 请求无效。' }, { status: 400 }) }
-        try {
-          if (data.action === 'stop') {
-            const bridge = await local
-            bridge?.endSharing()
-            return new Response(null, { status: 204 })
-          }
-          local ??= openLocalChrome().catch(error => { local = undefined; throw error })
-          const bridge = await local
-          if (target) bridge.navigate(target)
-          return Response.json(bridge.describe(data.action === 'renew'), { headers: { 'Cache-Control': 'no-store' } })
+          const body = await request.arrayBuffer()
+          if (body.byteLength > MAX_COOKIE_FILE) throw new Error()
+          plan = prepareCookieImport(JSON.parse(new TextDecoder().decode(body)))
+          browserTarget({ url: plan.origin }, new URL(request.url).origin)
         } catch {
-          return Response.json({error: '本机 Chrome 连接服务无法启动。'}, {status: 503})
+          return Response.json({ error: 'Cookie 文件无效或超出大小限制。' }, { status: 400, headers: noStore })
+        }
+        const work = navigation.catch(() => {}).then(async () => {
+          if (!viewer) await ensureViewer()
+          await chrome.importCookies(plan.cookies)
+          return chrome.open(plan.origin).then(() => true, () => false)
+        })
+        navigation = work
+        try {
+          const opened = await work
+          return Response.json({ count: plan.cookies.length, opened }, { headers: noStore })
+        } catch {
+          return Response.json({ error: '独立 Chrome 无法导入 Cookie。' }, { status: 503, headers: noStore })
         }
       },
-    }), 'dsh-tab-browser: local Chrome')
+    }), 'dsh-tab-browser: import cookies')
 
     scope.effect(() => async () => {
       closing = true
       await pending?.catch(() => {})
       await navigation.catch(() => {})
-      await (await local?.catch(() => {}))?.close()
       await viewer?.close()
       await chrome.stop()
     }, 'dsh-tab-browser: close local browser')

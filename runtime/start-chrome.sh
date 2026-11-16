@@ -32,7 +32,14 @@ openbox --sm-disable &
 desktop=$!
 dbus-update-activation-environment DISPLAY XAUTHORITY XDG_RUNTIME_DIR
 gnome-keyring-daemon --start --components=secrets >/dev/null
-google-chrome-stable --ozone-platform=x11 --password-store=gnome-libsecret \
+profile="$HOME/.config/dsh-google-chrome"
+old_profile="$HOME/.config/google-chrome"
+if [ ! -e "$profile" ] && [ -d "$old_profile" ] && [ ! -L "$old_profile" ]; then
+  mv "$old_profile" "$profile"
+  ln -s "$profile" "$old_profile"
+fi
+python3 /usr/local/bin/chrome-cookie-pipe.py --user-data-dir="$profile" \
+  --ozone-platform=x11 --password-store=gnome-libsecret \
   --no-first-run --no-default-browser-check --start-maximized --lang=zh-CN &
 browser=$!
 wait "$browser"

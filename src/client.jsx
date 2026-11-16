@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LocalChrome } from './local-chrome.jsx'
+import { MAX_COOKIE_FILE, prepareCookieImport } from './cookie-import.js'
 
 const ID = 'dsh-tab-browser'
 const SLOT = 'sidebar.right.pane.tab'
@@ -12,11 +12,9 @@ const messages = {
     firstRun: '首次启动需要下载浏览器。Chrome 使用独立的浏览器资料。',
     local: '请在本机 DSH 桌面版或本机 Web 界面打开。',
     failed: 'Chrome 启动失败。',
-    localMode: '本机 Chrome', isolatedMode: '独立 Chrome', browserMode: '浏览器来源',
-    localInstructions: '在平时用的 Chrome 里选中已登录的网页，打开「DSH 本机 Chrome」扩展，粘贴连接码并点「共享当前网页」。',
-    localConnected: '正在共享本机 Chrome 网页', stopSharing: '结束共享',
-    pairCode: '连接码', copyCode: '复制连接码', copiedCode: '已复制', renewCode: '重新生成连接码',
-    pairing: '正在生成连接码…', localFailed: '本机 Chrome 连接失败。',
+    importCookies: '导入网站 Cookie', importConfirm: '导入并打开', cancel: '取消', importing: '正在导入…',
+    invalidFile: '请选择有效的单站点 Cookie JSON 文件。', importFailed: 'Cookie 导入失败，请重试。',
+    imported: 'Cookie 已导入。请在网页确认登录状态。', manualOpen: 'Cookie 已导入。请在 Chrome 打开该网站。',
   },
   en: {
     browser: 'Browser', title: 'Google Chrome', description: 'Browse the web in the sidebar',
@@ -24,11 +22,9 @@ const messages = {
     firstRun: 'The first launch downloads Chrome. This browser uses its own profile.',
     local: 'Open this tab in the local DSH desktop app or a local DSH web session.',
     failed: 'Chrome could not start.',
-    localMode: 'Local Chrome', isolatedMode: 'Separate Chrome', browserMode: 'Browser source',
-    localInstructions: 'Select a signed-in page in Chrome. Open the DSH Local Chrome extension, paste the code and share the current page.',
-    localConnected: 'Sharing a page from local Chrome', stopSharing: 'Stop sharing',
-    pairCode: 'Connection code', copyCode: 'Copy code', copiedCode: 'Copied', renewCode: 'Get a new code',
-    pairing: 'Generating a connection code…', localFailed: 'Local Chrome could not connect.',
+    importCookies: 'Import site cookies', importConfirm: 'Import and open', cancel: 'Cancel', importing: 'Importing…',
+    invalidFile: 'Choose a valid single-site cookie JSON file.', importFailed: 'Cookie import failed. Please try again.',
+    imported: 'Cookies imported. Check your sign-in status on the website.', manualOpen: 'Cookies imported. Open the website in Chrome.',
   },
 }
 
@@ -41,6 +37,58 @@ function parseViewer(value) {
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password ||
       !/^\/[A-Za-z0-9_-]{43}\/$/u.test(url.pathname) || url.search || url.hash) throw new Error()
   return url
+}
+
+function CookieImport({ t }) {
+  const picker = useRef(null)
+  const [selected, setSelected] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState(null)
+
+  async function chooseFile(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setStatus(null)
+    setSelected(null)
+    try {
+      if (file.size > MAX_COOKIE_FILE) throw new Error()
+      const text = await file.text()
+      const plan = prepareCookieImport(JSON.parse(text))
+      setSelected({ text, origin: plan.origin })
+    } catch {
+      setStatus({ error: true, key: 'invalidFile' })
+    }
+  }
+
+  async function submit() {
+    setLoading(true)
+    setStatus(null)
+    try {
+      const response = await fetch(new URL('api/dsh-tab-browser/cookies', document.baseURI), {
+        method: 'POST', headers: { 'X-DSH-Chrome': '1', 'Content-Type': 'application/json' },
+        body: selected.text,
+      })
+      if (!response.ok) throw new Error()
+      const result = await response.json()
+      setSelected(null)
+      setStatus({ key: result.opened ? 'imported' : 'manualOpen' })
+    } catch {
+      setStatus({ error: true, key: 'importFailed' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <div className="chrome-import">
+    <input type="file" aria-label={t('importCookies')} accept=".json,application/json" ref={picker} onChange={chooseFile} hidden />
+    {selected ? <>
+      <p>{selected.origin}</p>
+      <button type="button" disabled={loading} onClick={submit}>{t(loading ? 'importing' : 'importConfirm')}</button>
+      <button type="button" disabled={loading} onClick={() => { setSelected(null); setStatus(null) }}>{t('cancel')}</button>
+    </> : <button type="button" onClick={() => picker.current?.click()}>{t('importCookies')}</button>}
+    {status && <p role={status.error ? 'alert' : 'status'}>{t(status.key)}</p>}
+  </div>
 }
 
 function ChromeTab({ tab, t }) {
@@ -111,6 +159,7 @@ function ChromeTab({ tab, t }) {
   }, [viewer])
 
   return <div data-dsh-tab-chrome="">
+    {viewer && local && <CookieImport t={t} />}
     {viewer ? <iframe key={viewer.generation} ref={frame} title="Google Chrome" src={viewer.url.href}
       sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" /> :
       <section className="chrome-start">
@@ -124,30 +173,13 @@ function ChromeTab({ tab, t }) {
   </div>
 }
 
-const modeKey = 'dsh-tab-browser.mode'
-
 function BrowserTab({ useTabInfo, t }) {
   const { tab } = useTabInfo()
-  const [mode, setMode] = useState(() => {
-    try { return localStorage.getItem(modeKey) === 'isolated' ? 'isolated' : 'local' }
-    catch { return 'local' }
-  })
-  function select(next) {
-    setMode(next)
-    try { localStorage.setItem(modeKey, next) } catch { /* DSH may restrict storage. */ }
-  }
-  if (!localClient()) return <ChromeTab tab={tab} t={t} />
-  return <div data-dsh-chrome-mode="">
-    <div className="dsh-chrome-modes" role="group" aria-label={t('browserMode')}>
-      <button type="button" aria-pressed={mode === 'local'} onClick={() => select('local')}>{t('localMode')}</button>
-      <button type="button" aria-pressed={mode === 'isolated'} onClick={() => select('isolated')}>{t('isolatedMode')}</button>
-    </div>
-    {mode === 'local' ? <LocalChrome tab={tab} t={t} parseViewer={parseViewer} /> : <ChromeTab tab={tab} t={t} />}
-  </div>
+  return <ChromeTab tab={tab} t={t} />
 }
 
 const css = `
-[data-dsh-tab-chrome]{display:flex;flex:1;width:100%;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+[data-dsh-tab-chrome]{display:flex;flex-direction:column;flex:1;width:100%;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
 [data-dsh-tab-chrome] iframe{display:block;flex:1;width:100%;height:100%;min-width:0;min-height:0;border:0}
 [data-dsh-tab-chrome] .chrome-start{margin:auto;display:grid;gap:10px;justify-items:start;padding:24px;max-width:360px;white-space:normal}
 [data-dsh-tab-chrome] h2{font-size:25px;line-height:1.2;font-weight:600;margin:0 0 3px}
@@ -156,20 +188,9 @@ const css = `
 [data-dsh-tab-chrome] button{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font:inherit;font-size:13px;padding:8px 14px;cursor:pointer}
 [data-dsh-tab-chrome] button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 [data-dsh-tab-chrome] button:disabled{cursor:wait;opacity:.65}
-[data-dsh-chrome-mode],.dsh-local-chrome{display:flex;flex-direction:column;flex:1;width:100%;height:100%;min-height:0;min-width:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
-[data-dsh-chrome-mode] button{cursor:pointer;padding:5px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-layer-1);color:inherit;font:inherit;font-size:12px}
-[data-dsh-chrome-mode] button[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover);font-weight:600}
-[data-dsh-chrome-mode] button:disabled{cursor:wait;opacity:.65}
-.dsh-chrome-modes,.dsh-local-tools{display:flex;align-items:center;gap:6px;padding:6px 8px;flex:none;font-size:12px}
-.dsh-local-tools{justify-content:space-between;padding-top:0;color:var(--dsw-alias-label-secondary)}
-.dsh-local-setup{flex:none;padding:10px 14px 14px;white-space:normal;max-width:540px}
-.dsh-local-setup h2{margin:0 0 8px;font-size:17px}
-.dsh-local-setup p,.dsh-local-error{margin:0 0 10px;font-size:13px;line-height:1.5}
-.dsh-local-error{padding:0 14px}
-.dsh-chrome-code{display:flex;gap:6px;margin:0 0 8px}
-.dsh-chrome-code input{flex:1;min-width:0;padding:5px 7px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-layer-1);color:inherit;font-size:12px}
-.dsh-chrome-code button{flex:none}
-.dsh-local-chrome iframe{display:block;flex:1;width:100%;min-width:0;min-height:0;border:0}
+[data-dsh-tab-chrome] .chrome-import{display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px}
+[data-dsh-tab-chrome] .chrome-import button{font-size:12px;padding:3px 8px}
+[data-dsh-tab-chrome] .chrome-import p{min-width:0;font-size:12px}
 `
 
 export const inject = ['sidebarRightTabs', 'slots', 'locale']

@@ -1,15 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "DSH 本机 Chrome",
-  "description": "把你选中的 Chrome 网页共享给本机 DeepSeek Harness 的浏览器 Tab。",
-  "version": "0.3.0",
+  "name": "DSH 抖音 Cookie 导出",
+  "description": "经你确认后导出当前抖音站点的 Cookie，供 DSH 独立 Chrome 导入。",
+  "version": "0.4.0",
   "minimum_chrome_version": "118",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzP7fPuCW++LQt1UcDB/2LLEzpt107dRE1lriPACOX9Jq2fMot6DegSYtOpH9uwKANIpuNzcZgSy+N36v/rtL2DMCeH3C93iBgFZTl3MuX8bsPu/GBFxzsVUsKAaOS9CYljomhtFTdqlzgW3xq1qi1ZiP62WeVmra1QFwgyxQgTCdj8t2MaPEuXcWiAYVt7wbEmuQSzTC2DPk7AKULrtoGY4lD/ct9GQolgxDj9Pqpjhjk2SvHXjhrX6w1hcrzX7TmZsWnEH+L6uoQBeZeaFC/88TfrnNatrogqX8FAzNNmZFO3GAljlXHy1KJo+lTSkC2r4ufayDPaaWtrY2ArzZWQIDAQAB",
-  "permissions": ["activeTab", "debugger"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:*;"
-  },
-  "background": {"service_worker": "worker.js", "type": "module"},
-  "action": {"default_title": "DSH 本机 Chrome", "default_popup": "popup.html"}
+  "permissions": ["activeTab"],
+  "optional_permissions": ["cookies"],
+  "optional_host_permissions": ["https://*.douyin.com/*"],
+  "incognito": "not_allowed",
+  "action": {"default_title": "DSH 抖音 Cookie 导出", "default_popup": "popup.html"}
 }

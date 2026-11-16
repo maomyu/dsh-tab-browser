@@ -9,7 +9,9 @@ import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
 const runtime = fileURLToPath(new URL('../runtime/', import.meta.url))
-const IMAGE = 'dsh-tab-chrome:0.1.0'
+const IMAGE = 'dsh-tab-chrome:0.2.0'
+const PROFILE_DIR = '/home/chrome/.config/dsh-google-chrome'
+const COOKIE_SOCKET = '/tmp/dsh-chrome-cookie-import.sock'
 const COLIMA_PROFILE = 'dsh-chrome'
 const CONTEXT = process.platform === 'darwin' ? `colima-${COLIMA_PROFILE}` : 'default'
 
@@ -67,16 +69,22 @@ export class ChromeRuntime {
   async start() {
     await this.ensureDocker()
     const state = await this.docker(['container', 'inspect', this.name, '--format',
-      '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}}']).catch(() => '')
-    if (state && state !== `true ${this.profileVolume}` && state !== `false ${this.profileVolume}`) {
+      '{{.State.Running}} {{index .Config.Labels "dsh-tab-chrome.profile"}} {{.Config.Image}}']).catch(() => '')
+    const [running, volume, currentImage] = state.split(' ')
+    if (state && volume !== this.profileVolume) {
       throw new Error('Chrome 容器名称与本机另一个容器冲突。')
     }
-    if (state !== `true ${this.profileVolume}`) {
-      if (state) await this.docker(['container', 'rm', this.name])
+    if (running !== 'true' || currentImage !== IMAGE) {
       const image = await this.docker(['image', 'inspect', IMAGE, '--format', '{{.Id}}']).catch(() => '')
       if (!image) {
         try { await this.docker(['build', '--tag', IMAGE, runtime], 900_000) }
         catch (error) { throw new Error(`Chrome 下载或构建失败。${error.message}`) }
+      }
+      if (running === 'true') {
+        this.started = true
+        await this.stop()
+      } else if (state) {
+        await this.docker(['container', 'rm', this.name])
       }
       await this.docker(['run', '--detach', '--rm', '--init', '--name', this.name,
         '--label', `dsh-tab-chrome.profile=${this.profileVolume}`, '--shm-size', '768m', '--cap-drop', 'ALL',
@@ -87,7 +95,7 @@ export class ChromeRuntime {
     try {
       for (let attempt = 0; attempt < 40; attempt++) {
         const ready = await this.docker(['exec', this.name, 'sh', '-c',
-          'test -S /tmp/.X11-unix/X19 && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null']).then(() => true, () => false)
+          `test -S /tmp/.X11-unix/X19 && test -S ${COOKIE_SOCKET} && nc -z 127.0.0.1 5900 && pgrep -x chrome >/dev/null`]).then(() => true, () => false)
         if (ready) return
         await delay(500)
       }
@@ -104,7 +112,20 @@ export class ChromeRuntime {
   }
 
   async open(url) {
-    await this.docker(['exec', this.name, 'google-chrome-stable', '--new-tab', url])
+    await this.docker(['exec', this.name, 'google-chrome-stable', `--user-data-dir=${PROFILE_DIR}`, '--new-tab', url])
+  }
+
+  async importCookies(cookies) {
+    const result = await new Promise((resolve, reject) => {
+      const child = execFile(this.dockerBin, ['--context', CONTEXT, 'exec', '-i', this.name,
+        'python3', '/usr/local/bin/chrome-cookie-pipe.py', '--import'], { timeout: 30_000, maxBuffer: 1024 }, (error, stdout) => {
+        if (error) reject(new Error('Chrome 无法导入 Cookie。'))
+        else resolve(stdout.trim())
+      })
+      child.stdin.on('error', () => {})
+      child.stdin.end(JSON.stringify(cookies) + '\n')
+    })
+    if (result !== 'ok') throw new Error('Chrome 无法导入 Cookie。')
   }
 
   async stop() {
