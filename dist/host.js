@@ -3773,7 +3773,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 var exec = promisify(execFile);
 var runtime = fileURLToPath(new URL("../runtime/", import.meta.url));
-var IMAGE = "dsh-tab-chrome:0.2.0";
+var IMAGE = "dsh-tab-chrome:0.2.1";
 var PROFILE_DIR = "/home/chrome/.config/dsh-google-chrome";
 var COOKIE_SOCKET = "/tmp/dsh-chrome-cookie-import.sock";
 var COLIMA_PROFILE = "dsh-chrome";

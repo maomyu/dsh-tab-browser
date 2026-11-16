@@ -30,7 +30,7 @@ zip -r -X dsh-tab-browser-douyin-export-0.4.0.zip chrome-extension
 Chrome 容器从 Google 的签名仓库构建。更新 Chrome 后端时，可用同一专用 Docker context 重新拉取并构建，再从 DSH 重启 Chrome。保留 profile 卷可以保留扩展、书签和浏览器资料。
 
 ```sh
-docker --context colima-dsh-chrome build --pull --no-cache -t dsh-tab-chrome:0.2.0 runtime
+docker --context colima-dsh-chrome build --pull --no-cache -t dsh-tab-chrome:0.2.1 runtime
 ```
 
 浏览器画面和输入走只监听本机回环地址的临时连接。Linux 里的 VNC 端口未发布到宿主，插件不访问 Chrome 资料文件。依赖和第三方许可见 `NOTICE`。

@@ -17,6 +17,7 @@ RUN install -d -m 1777 /tmp/.X11-unix && rm -f /etc/machine-id \
     && ln -s /home/chrome/.local/share/dsh-machine-id /etc/machine-id
 COPY --chmod=755 start-chrome.sh /usr/local/bin/start-chrome
 COPY chrome-cookie-pipe.py /usr/local/bin/chrome-cookie-pipe.py
+COPY --chmod=644 mimeapps.list /etc/xdg/mimeapps.list
 USER chrome
 ENV HOME=/home/chrome DISPLAY=:19 LANG=C.UTF-8
 ENTRYPOINT ["/usr/local/bin/start-chrome"]

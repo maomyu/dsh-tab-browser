@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
 const runtime = fileURLToPath(new URL('../runtime/', import.meta.url))
-const IMAGE = 'dsh-tab-chrome:0.2.0'
+const IMAGE = 'dsh-tab-chrome:0.2.1'
 const PROFILE_DIR = '/home/chrome/.config/dsh-google-chrome'
 const COOKIE_SOCKET = '/tmp/dsh-chrome-cookie-import.sock'
 const COLIMA_PROFILE = 'dsh-chrome'
