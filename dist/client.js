@@ -25,12 +25,125 @@ __export(client_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(client_exports);
-var import_react2 = require("react");
+var import_react4 = require("react");
 
 // src/native-tab.jsx
+var import_react2 = require("react");
+
+// src/browser-toolbar.jsx
 var import_react = require("react");
+
+// src/page-input.js
+function webAddress(value) {
+  if (typeof value !== "string" || value.length > 16384) return void 0;
+  try {
+    const url = new URL(value);
+    if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) return url.href;
+  } catch {
+  }
+}
+
+// src/browser-navigation.js
+function browserAddress(value, applicationOrigin) {
+  const input = value.trim();
+  if (!input) return void 0;
+  let candidate = input;
+  if (/^[\w.-]+:\d+(?:[/?#]|$)/u.test(input)) candidate = "http://" + input;
+  else if (!/^[a-z][a-z\d+.-]*:/iu.test(input)) candidate = "https://" + input;
+  const address = webAddress(candidate);
+  if (address && new URL(address).origin !== applicationOrigin) return address;
+}
+function usesDesktopPage(value) {
+  const address = webAddress(value);
+  if (!address) return false;
+  const host = new URL(address).hostname;
+  return ["xiaohongshu.com", "www.xiaohongshu.com", "rednote.com", "www.rednote.com"].includes(host);
+}
+function previewMessage(data) {
+  const message = data?.type === "dsh-native-chrome" ? data.message : void 0;
+  if (message?.type === "offline" || message?.type === "ready") return { type: message.type };
+  if (message?.type === "status" && ["browser", "starting", "manage"].includes(message.mode)) {
+    const url = message.url === "" ? "" : webAddress(message.url);
+    if (url === void 0 || typeof message.title !== "string") return void 0;
+    return { type: "status", mode: message.mode, url, title: message.title.slice(0, 512) };
+  }
+  if (message?.type === "popup") {
+    const url = webAddress(message.url);
+    if (url && typeof message.token === "string" && /^[a-f0-9-]{36}$/u.test(message.token)) {
+      return { type: "popup", token: message.token, url };
+    }
+  }
+}
+
+// src/browser-toolbar.jsx
 var import_jsx_runtime = require("react/jsx-runtime");
-var tabKeys = /* @__PURE__ */ new WeakMap();
+function BrowserToolbar({ t, url, title, locked, canBack, canForward, canReload, onNavigate, onBack, onForward, onReload, children }) {
+  const field = (0, import_react.useRef)(null);
+  const id = (0, import_react.useId)();
+  const [draft, setDraft] = (0, import_react.useState)(url);
+  const [invalid, setInvalid] = (0, import_react.useState)(false);
+  (0, import_react.useEffect)(() => {
+    if (document.activeElement !== field.current) {
+      setDraft(url);
+      setInvalid(false);
+    }
+  }, [url]);
+  function submit(event) {
+    event.preventDefault();
+    if (!draft.trim()) return;
+    const target = browserAddress(draft, location.origin);
+    if (!target) {
+      setInvalid(true);
+      return;
+    }
+    setInvalid(false);
+    field.current?.blur();
+    setDraft(target);
+    onNavigate(target);
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "chrome-address", "aria-label": t("browser"), onSubmit: submit, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("back"), "aria-label": t("back"), disabled: !canBack, onClick: onBack, children: "\u2039" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("forward"), "aria-label": t("forward"), disabled: !canForward, onClick: onForward, children: "\u203A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("reload"), "aria-label": t("reload"), disabled: !canReload, onClick: onReload, children: "\u21BB" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { className: "chrome-sr-only", htmlFor: id, children: t("address") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          id,
+          ref: field,
+          type: "text",
+          inputMode: "url",
+          placeholder: t("address"),
+          title: title || draft,
+          value: draft,
+          onChange: (event) => {
+            setDraft(event.target.value);
+            setInvalid(false);
+          },
+          autoCapitalize: "none",
+          autoComplete: "off",
+          spellCheck: false,
+          "aria-invalid": invalid || void 0,
+          "aria-describedby": invalid ? `${id}-error` : void 0,
+          onKeyDown: (event) => {
+            if (event.key === "Escape") {
+              setDraft(url);
+              setInvalid(false);
+            }
+          },
+          disabled: locked
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "submit", hidden: true, children: t("openPage") }),
+      children
+    ] }),
+    invalid && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { id: `${id}-error`, className: "chrome-alert", role: "alert", children: t("addressInvalid") })
+  ] });
+}
+
+// src/native-tab.jsx
+var import_jsx_runtime2 = require("react/jsx-runtime");
 function request(key, action, data, keepalive = false) {
   return fetch(new URL("api/dsh-tab-browser/native", document.baseURI), {
     method: "POST",
@@ -43,35 +156,23 @@ function request(key, action, data, keepalive = false) {
     return result;
   });
 }
-function address(value) {
-  const text = value.trim();
-  if (!text) return void 0;
-  if (/^[\w.-]+:\d+(?:[/?#]|$)/u.test(text)) return "http://" + text;
-  return /^[a-z][a-z\d+.-]*:/iu.test(text) ? text : "https://" + text;
-}
-function NativeTab({ tab, t, CookieImport: CookieImport2, parseViewer: parseViewer2 }) {
-  if (!tabKeys.has(tab.signal)) tabKeys.set(tab.signal, crypto.randomUUID());
-  const key = tabKeys.get(tab.signal);
-  const { revision, params } = tab.navigation;
-  const url = params?.url;
-  const popup = params?.chromePopup;
-  const frame = (0, import_react.useRef)(null);
-  const locationField = (0, import_react.useRef)(null);
-  const seen = (0, import_react.useRef)(null);
-  const actual = (0, import_react.useRef)("");
-  const [viewer, setViewer] = (0, import_react.useState)(null);
-  const [generation, setGeneration] = (0, import_react.useState)(0);
-  const [mode, setMode] = (0, import_react.useState)("browser");
-  const [title, setTitle] = (0, import_react.useState)("");
-  const [locationText, setLocationText] = (0, import_react.useState)(url ?? "");
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [offline, setOffline] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+function NativeTab({ tab, t, navigation, CookieImport: CookieImport2, parseViewer: parseViewer2, onAddress }) {
+  const [key] = (0, import_react2.useState)(() => crypto.randomUUID());
+  const { url, popup } = navigation;
+  const frame = (0, import_react2.useRef)(null);
+  const seen = (0, import_react2.useRef)(null);
+  const [viewer, setViewer] = (0, import_react2.useState)(null);
+  const [generation, setGeneration] = (0, import_react2.useState)(0);
+  const [mode, setMode] = (0, import_react2.useState)("browser");
+  const [title, setTitle] = (0, import_react2.useState)("");
+  const [address, setAddress] = (0, import_react2.useState)(url ?? "");
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [offline, setOffline] = (0, import_react2.useState)(false);
+  const [error, setError] = (0, import_react2.useState)("");
   function accept(result) {
     setMode(result.mode);
     setTitle(result.title || "");
-    actual.current = result.url || "";
-    if (document.activeElement !== locationField.current) setLocationText(actual.current);
+    setAddress(result.url || "");
   }
   async function run(action, data, reconnect = false) {
     setBusy(true);
@@ -93,24 +194,29 @@ function NativeTab({ tab, t, CookieImport: CookieImport2, parseViewer: parseView
       if (!tab.signal.aborted) setBusy(false);
     }
   }
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     const close = () => {
       void request(key, "release", void 0, true).catch(() => {
       });
     };
     tab.signal.addEventListener("abort", close, { once: true });
-    return () => tab.signal.removeEventListener("abort", close);
+    return () => {
+      tab.signal.removeEventListener("abort", close);
+      if (!tab.signal.aborted) close();
+    };
   }, [key, tab.signal]);
-  (0, import_react.useEffect)(() => {
-    if (!tab.visible || seen.current?.revision === revision && seen.current?.key === key) return;
-    seen.current = { revision, key };
+  (0, import_react2.useEffect)(() => {
+    if (!tab.visible || seen.current === navigation) return;
+    seen.current = navigation;
+    if (!url && !popup && !viewer) return;
     void run("attach", { url, popup });
-  }, [tab.visible, revision, key, url, popup]);
-  (0, import_react.useEffect)(() => {
+  }, [tab.visible, navigation]);
+  (0, import_react2.useEffect)(() => {
     if (!viewer) return;
     const receive = (event) => {
-      if (event.source !== frame.current?.contentWindow || event.origin !== viewer.origin || event.data?.type !== "dsh-native-chrome") return;
-      const message = event.data.message;
+      if (event.source !== frame.current?.contentWindow || event.origin !== viewer.origin) return;
+      const message = previewMessage(event.data);
+      if (!message) return;
       if (message.type === "status") accept(message);
       if (message.type === "offline") setOffline(true);
       if (message.type === "ready") setOffline(false);
@@ -121,46 +227,45 @@ function NativeTab({ tab, t, CookieImport: CookieImport2, parseViewer: parseView
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, [viewer, tab.actions]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dsh-tab-chrome": "", className: "chrome-native", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "chrome-address", onSubmit: (event) => {
-      event.preventDefault();
-      const url2 = address(locationText);
-      if (!url2) return;
-      locationField.current?.blur();
-      void run("navigate", { url: url2 });
-    }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("back"), "aria-label": t("back"), disabled: busy || !viewer || mode !== "browser", onClick: () => run("back"), children: "\u2039" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("forward"), "aria-label": t("forward"), disabled: busy || !viewer || mode !== "browser", onClick: () => run("forward"), children: "\u203A" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("reload"), "aria-label": t("reload"), disabled: busy || !viewer || mode !== "browser", onClick: () => run("reload"), children: "\u21BB" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "input",
-        {
-          ref: locationField,
-          type: "text",
-          "aria-label": t("address"),
-          placeholder: t("address"),
-          title: title || locationText,
-          value: locationText,
-          onChange: (event) => setLocationText(event.target.value),
-          spellCheck: false,
-          onKeyDown: (event) => {
-            if (event.key === "Escape") setLocationText(actual.current);
-          },
-          disabled: busy || mode !== "browser"
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "submit", hidden: true, children: t("openPage") }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy || mode === "starting", onClick: () => run(mode === "manage" ? "resume" : "manage"), children: t(mode === "manage" ? "resume" : "manage") })
+  const canControl = !busy && viewer && mode === "browser";
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-dsh-tab-chrome": "", className: "chrome-native", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      BrowserToolbar,
+      {
+        t,
+        url: address,
+        title,
+        locked: busy || mode !== "browser",
+        canBack: canControl,
+        canForward: canControl,
+        canReload: canControl,
+        onBack: () => run("back"),
+        onForward: () => run("forward"),
+        onReload: () => run("reload"),
+        onNavigate: (url2) => {
+          if (!onAddress(url2)) void run("navigate", { url: url2 });
+        },
+        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "button",
+          {
+            className: "chrome-primary-tool",
+            type: "button",
+            disabled: busy || mode === "starting",
+            onClick: () => run(mode === "manage" ? "resume" : "manage"),
+            children: t(mode === "manage" ? "resume" : "manage")
+          }
+        )
+      }
+    ),
+    viewer && mode === "browser" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-native-tools", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CookieImport2, { t, applyImport: (bundle) => request(key, "import", { bundle }) }),
+      address && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: busy, onClick: () => run("openWindow"), children: t("openWindow") })
     ] }),
-    viewer && mode === "browser" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-native-tools", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CookieImport2, { t, applyImport: (bundle) => request(key, "import", { bundle }) }),
-      actual.current && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: () => run("openWindow"), children: t("openWindow") })
-    ] }),
-    (error || offline) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-alert", role: error ? "alert" : "status", children: [
+    (error || offline) && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-alert", role: error ? "alert" : "status", children: [
       error || t("disconnected"),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: () => run("attach", viewer ? void 0 : { url, popup }, true), children: t("retry") })
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: busy, onClick: () => run("attach", viewer ? void 0 : { url, popup }, true), children: t("retry") })
     ] }),
-    viewer && tab.visible && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    viewer && tab.visible && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "iframe",
       {
         ref: frame,
@@ -171,7 +276,164 @@ function NativeTab({ tab, t, CookieImport: CookieImport2, parseViewer: parseView
       },
       generation
     ),
-    !viewer && busy && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "chrome-alert", role: "status", children: t("waiting") })
+    !viewer && busy && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "chrome-alert", role: "status", children: t("waiting") })
+  ] });
+}
+
+// src/desktop-tab.jsx
+var import_react3 = require("react");
+var import_jsx_runtime3 = require("react/jsx-runtime");
+async function workspaceKey(source, sessionId, signal) {
+  signal.throwIfAborted();
+  if (source.getSnapshot().phase !== "ready") {
+    await new Promise((resolve, reject) => {
+      const abort = () => {
+        stop();
+        reject(signal.reason);
+      };
+      const ready = () => {
+        if (source.getSnapshot().phase !== "ready") return;
+        stop();
+        signal.removeEventListener("abort", abort);
+        resolve();
+      };
+      const stop = source.subscribe(ready);
+      signal.addEventListener("abort", abort, { once: true });
+      ready();
+    });
+  }
+  const workspace = source.getSnapshot().items.find((item) => item.sessionIds.includes(sessionId));
+  return workspace ? `cwd:${workspace.path}` : `session:${sessionId}`;
+}
+var empty = { url: "", title: "", back: false, forward: false };
+function DesktopTab({ tab, t, navigation, workspace, sessionId, bridge, onSwitch }) {
+  const viewport = (0, import_react3.useRef)(null);
+  const current = (0, import_react3.useRef)(null);
+  const desired = (0, import_react3.useRef)(navigation.url);
+  const [state, setState] = (0, import_react3.useState)(empty);
+  const [error, setError] = (0, import_react3.useState)(false);
+  const [generation, setGeneration] = (0, import_react3.useState)(0);
+  function load(target) {
+    const url = webAddress(target);
+    if (!url || new URL(url).origin === location.origin) return;
+    desired.current = url;
+    const guest = current.current;
+    if (!guest?.ready) return;
+    setError(false);
+    const revision = ++guest.revision;
+    void guest.element.loadURL(url).catch((failure) => {
+      if (current.current === guest && revision === guest.revision && failure.code !== "ERR_ABORTED") {
+        setError(true);
+      }
+    });
+  }
+  (0, import_react3.useEffect)(() => {
+    load(navigation.url);
+  }, [navigation]);
+  (0, import_react3.useEffect)(() => {
+    const controller = new AbortController();
+    const signal = AbortSignal.any([tab.signal, controller.signal]);
+    let lease;
+    let element;
+    const dispose = () => {
+      if (current.current?.element === element) current.current = null;
+      element?.remove();
+      if (lease) {
+        const held = lease;
+        lease = void 0;
+        void Promise.resolve(bridge.release(held)).catch(() => {
+        });
+      }
+    };
+    signal.addEventListener("abort", dispose, { once: true });
+    void (async () => {
+      const key = await workspaceKey(workspace, sessionId, signal);
+      signal.throwIfAborted();
+      const reservation = await bridge.acquire(key);
+      lease = reservation.lease;
+      if (signal.aborted) {
+        dispose();
+        return;
+      }
+      element = document.createElement("webview");
+      element.className = "desktop-guest";
+      element.setAttribute("name", lease);
+      element.setAttribute("partition", reservation.partition);
+      element.setAttribute("allowpopups", "");
+      element.setAttribute("src", "about:blank#" + lease);
+      const guest = { element, ready: false, revision: 0 };
+      current.current = guest;
+      const stopOpen = bridge.onOpenRequested(lease, (value) => {
+        const url = webAddress(value);
+        if (!signal.aborted && url && new URL(url).origin !== location.origin) {
+          tab.actions.openTab("browser", { params: { url }, revealIfOpened: false });
+        }
+      });
+      signal.addEventListener("abort", stopOpen, { once: true });
+      const update = () => {
+        const url = webAddress(element.getURL());
+        if (!url) return;
+        setState({ url, title: element.getTitle(), back: element.canGoBack(), forward: element.canGoForward() });
+      };
+      element.addEventListener("dom-ready", () => {
+        if (guest.ready) return;
+        guest.ready = true;
+        load(desired.current);
+      }, { signal });
+      for (const event of ["did-navigate", "page-title-updated", "did-stop-loading"]) {
+        element.addEventListener(event, update, { signal });
+      }
+      element.addEventListener("did-navigate-in-page", (event) => {
+        if (event.isMainFrame) update();
+      }, { signal });
+      element.addEventListener("did-fail-load", (event) => {
+        if (event.isMainFrame && event.errorCode !== -3) setError(true);
+      }, { signal });
+      element.addEventListener("render-process-gone", () => {
+        controller.abort();
+        setError(true);
+      }, { signal });
+      viewport.current.append(element);
+    })().catch(() => {
+      if (!signal.aborted) {
+        controller.abort();
+        setError(true);
+      }
+    });
+    return () => controller.abort();
+  }, [bridge, workspace, sessionId, tab.signal, tab.actions, generation]);
+  const reload = () => current.current?.element.reload();
+  (0, import_react3.useEffect)(() => tab.actions.bindCommands({ refresh: reload }), [tab.actions]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { "data-dsh-tab-chrome": "", className: "chrome-native", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      BrowserToolbar,
+      {
+        t,
+        url: state.url || navigation.url,
+        title: state.title,
+        canBack: state.back,
+        canForward: state.forward,
+        canReload: Boolean(state.url),
+        onBack: () => current.current?.element.goBack(),
+        onForward: () => current.current?.element.goForward(),
+        onReload: reload,
+        onNavigate: (url) => {
+          if (usesDesktopPage(url)) load(url);
+          else onSwitch(url);
+        }
+      }
+    ),
+    error && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "chrome-alert", role: "alert", children: [
+      t("pageFailed"),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", onClick: () => {
+        if (current.current?.ready) load(desired.current);
+        else {
+          setError(false);
+          setGeneration((value) => value + 1);
+        }
+      }, children: t("retry") })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "desktop-viewport", ref: viewport })
   ] });
 }
 
@@ -217,7 +479,7 @@ function prepareCookieImport(data, now = Date.now() / 1e3) {
 }
 
 // src/client.jsx
-var import_jsx_runtime2 = require("react/jsx-runtime");
+var import_jsx_runtime4 = require("react/jsx-runtime");
 var ID = "dsh-tab-browser";
 var SLOT = "sidebar.right.pane.tab";
 var lastViewer;
@@ -229,6 +491,8 @@ var messages = {
     reload: "\u5237\u65B0",
     address: "\u8F93\u5165\u7F51\u5740",
     openPage: "\u6253\u5F00\u7F51\u9875",
+    addressInvalid: "\u8BF7\u8F93\u5165\u6709\u6548\u7684 HTTP \u6216 HTTPS \u7F51\u5740\u3002",
+    pageFailed: "\u7F51\u9875\u52A0\u8F7D\u5931\u8D25\u3002",
     manage: "\u7BA1\u7406\u6269\u5C55",
     resume: "\u8FD4\u56DE\u6D4F\u89C8",
     openWindow: "\u5728 Chrome \u7A97\u53E3\u6253\u5F00",
@@ -267,6 +531,8 @@ var messages = {
     reload: "Reload",
     address: "Enter a URL",
     openPage: "Open page",
+    addressInvalid: "Enter a valid HTTP or HTTPS address.",
+    pageFailed: "The page did not load.",
     manage: "Manage extensions",
     resume: "Return to browsing",
     openWindow: "Open in a Chrome window",
@@ -312,10 +578,10 @@ function parseViewer(value) {
   return url;
 }
 function CookieImport({ t, applyImport }) {
-  const picker = (0, import_react2.useRef)(null);
-  const [selected, setSelected] = (0, import_react2.useState)(null);
-  const [loading, setLoading] = (0, import_react2.useState)(false);
-  const [status, setStatus] = (0, import_react2.useState)(null);
+  const picker = (0, import_react4.useRef)(null);
+  const [selected, setSelected] = (0, import_react4.useState)(null);
+  const [loading, setLoading] = (0, import_react4.useState)(false);
+  const [status, setStatus] = (0, import_react4.useState)(null);
   async function chooseFile(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -354,25 +620,25 @@ function CookieImport({ t, applyImport }) {
       setLoading(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-import", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "file", "aria-label": t("importCookies"), accept: ".json,application/json", ref: picker, onChange: chooseFile, hidden: true }),
-    selected ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: selected.origin }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: loading, onClick: submit, children: t(loading ? "importing" : "importConfirm") }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: loading, onClick: () => {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "chrome-import", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "file", "aria-label": t("importCookies"), accept: ".json,application/json", ref: picker, onChange: chooseFile, hidden: true }),
+    selected ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { children: selected.origin }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: loading, onClick: submit, children: t(loading ? "importing" : "importConfirm") }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: loading, onClick: () => {
         setSelected(null);
         setStatus(null);
       }, children: t("cancel") })
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => picker.current?.click(), children: t("importCookies") }),
-    status && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: status.error ? "alert" : "status", children: t(status.key) })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => picker.current?.click(), children: t("importCookies") }),
+    status && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: status.error ? "alert" : "status", children: t(status.key) })
   ] });
 }
 function KeyringSettings({ t }) {
-  const input = (0, import_react2.useRef)(null);
-  const [open, setOpen] = (0, import_react2.useState)(false);
-  const [enabled, setEnabled] = (0, import_react2.useState)(false);
-  const [working, setWorking] = (0, import_react2.useState)(false);
-  const [message, setMessage] = (0, import_react2.useState)(null);
+  const input = (0, import_react4.useRef)(null);
+  const [open, setOpen] = (0, import_react4.useState)(false);
+  const [enabled, setEnabled] = (0, import_react4.useState)(false);
+  const [working, setWorking] = (0, import_react4.useState)(false);
+  const [message, setMessage] = (0, import_react4.useState)(null);
   const endpoint = new URL("api/dsh-tab-browser/keyring", document.baseURI);
   const headers = { "X-DSH-Chrome": "1" };
   async function toggle() {
@@ -407,30 +673,30 @@ function KeyringSettings({ t }) {
       setWorking(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-import", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", "aria-expanded": open, disabled: working, onClick: toggle, children: t("keyring") }),
-    open && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("form", { className: "chrome-keyring", onSubmit: (event) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "chrome-import", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", "aria-expanded": open, disabled: working, onClick: toggle, children: t("keyring") }),
+    open && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("form", { className: "chrome-keyring", onSubmit: (event) => {
       event.preventDefault();
       const password = input.current.value;
       input.current.value = "";
       void change("POST", password);
     }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: t("keyringHelp") }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "password", ref: input, required: true, autoComplete: "off", "aria-label": t("keyringPassword"), maxLength: 1024 }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "submit", disabled: working, children: t(working ? "keyringWorking" : "keyringSave") }),
-      enabled && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: working, onClick: () => change("DELETE"), children: t("keyringForget") })
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { children: t("keyringHelp") }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "password", ref: input, required: true, autoComplete: "off", "aria-label": t("keyringPassword"), maxLength: 1024 }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "submit", disabled: working, children: t(working ? "keyringWorking" : "keyringSave") }),
+      enabled && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", disabled: working, onClick: () => change("DELETE"), children: t("keyringForget") })
     ] }),
-    message && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: message.error ? "alert" : "status", children: t(message.key) })
+    message && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: message.error ? "alert" : "status", children: t(message.key) })
   ] });
 }
 function ChromeTab({ tab, t }) {
   const { revision, params } = tab.navigation;
   const url = params?.url;
-  const [viewer, setViewer] = (0, import_react2.useState)(lastViewer);
-  const [error, setError] = (0, import_react2.useState)("");
-  const [starting, setStarting] = (0, import_react2.useState)(false);
-  const frame = (0, import_react2.useRef)(null);
-  const request2 = (0, import_react2.useRef)(null);
+  const [viewer, setViewer] = (0, import_react4.useState)(lastViewer);
+  const [error, setError] = (0, import_react4.useState)("");
+  const [starting, setStarting] = (0, import_react4.useState)(false);
+  const frame = (0, import_react4.useRef)(null);
+  const request2 = (0, import_react4.useRef)(null);
   const local = localClient();
   async function connect({ target, newPage = false, reconnect = false } = {}) {
     request2.current?.abort();
@@ -467,11 +733,11 @@ function ChromeTab({ tab, t }) {
       }
     }
   }
-  (0, import_react2.useEffect)(() => () => {
+  (0, import_react4.useEffect)(() => () => {
     request2.current?.abort();
     request2.current = null;
   }, []);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react4.useEffect)(() => {
     if (!local || !tab.visible) return;
     const previous = navigations.get(tab.signal);
     if (previous === revision && (lastViewer || request2.current)) return;
@@ -480,7 +746,7 @@ function ChromeTab({ tab, t }) {
     else if (lastViewer && previous !== void 0 && previous !== revision) void connect({ newPage: true });
     else if (!lastViewer) void connect();
   }, [local, tab.visible, tab.signal, revision, url]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react4.useEffect)(() => {
     if (!viewer) return;
     const reconnect = (event) => {
       if (event.source === frame.current?.contentWindow && event.origin === viewer.url.origin && event.data?.type === "dsh-chrome-reconnect") void connect({ reconnect: true });
@@ -488,12 +754,12 @@ function ChromeTab({ tab, t }) {
     window.addEventListener("message", reconnect);
     return () => window.removeEventListener("message", reconnect);
   }, [viewer]);
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-dsh-tab-chrome": "", children: [
-    viewer && local && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-tools", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CookieImport, { t }),
-      window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh") && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(KeyringSettings, { t })
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { "data-dsh-tab-chrome": "", children: [
+    viewer && local && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "chrome-tools", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CookieImport, { t }),
+      window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh") && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(KeyringSettings, { t })
     ] }),
-    viewer ? tab.visible && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    viewer ? tab.visible && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
       "iframe",
       {
         ref: frame,
@@ -503,22 +769,42 @@ function ChromeTab({ tab, t }) {
         referrerPolicy: "no-referrer"
       },
       viewer.generation
-    ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("section", { className: "chrome-start", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { children: t("title") }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: t(local ? "description" : "local") }),
-      local && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => connect({ target: url }), disabled: starting, children: t(starting ? "waiting" : error ? "retry" : "start") }),
-        error ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: "alert", children: error }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "chrome-note", children: t("firstRun") })
+    ) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "chrome-start", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h2", { children: t("title") }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { children: t(local ? "description" : "local") }),
+      local && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("button", { type: "button", onClick: () => connect({ target: url }), disabled: starting, children: t(starting ? "waiting" : error ? "retry" : "start") }),
+        error ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { role: "alert", children: error }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "chrome-note", children: t("firstRun") })
       ] })
     ] })
   ] });
 }
-function BrowserTab({ useTabInfo, t }) {
+function DesktopBrowser({ tab, t, workspace, sessionId }) {
+  const { revision, params } = tab.navigation;
+  const [override, setOverride] = (0, import_react4.useState)();
+  const supplied = (0, import_react4.useMemo)(() => ({ revision, url: params?.url, popup: params?.chromePopup }), [revision, params?.url, params?.chromePopup]);
+  const navigation = override?.revision === revision ? override : supplied;
+  const bridge = workspace && window.dshDesktop.browser;
+  const switchTo = (url) => setOverride({ revision, url });
+  return bridge && !navigation.popup && usesDesktopPage(navigation.url) ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DesktopTab, { tab, t, navigation, workspace, sessionId, bridge, onSwitch: switchTo }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    NativeTab,
+    {
+      tab,
+      t,
+      navigation,
+      CookieImport,
+      parseViewer,
+      onAddress: (url) => {
+        if (!bridge || !usesDesktopPage(url)) return false;
+        switchTo(url);
+        return true;
+      }
+    }
+  );
+}
+function BrowserTab({ useTabInfo, t, workspace, sessionId }) {
   const { tab } = useTabInfo();
-  if (nativeClient()) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NativeTab, { tab, t, CookieImport, parseViewer });
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ChromeTab, { tab, t });
+  return nativeClient() ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DesktopBrowser, { tab, t, workspace, sessionId }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ChromeTab, { tab, t });
 }
 var css = `
 [data-dsh-tab-chrome]{display:flex;flex-direction:column;flex:1;width:100%;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
@@ -542,6 +828,16 @@ var css = `
 [data-dsh-tab-chrome] .chrome-native-tools{display:flex;align-items:center;flex:none;flex-wrap:wrap}
 [data-dsh-tab-chrome] .chrome-native-tools>button{font-size:12px;padding:3px 8px;margin:0 8px}
 [data-dsh-tab-chrome] .chrome-alert{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px}
+[data-dsh-tab-chrome].chrome-native{container:dsh-browser / inline-size}
+[data-dsh-tab-chrome] .chrome-sr-only{position:absolute;clip-path:inset(50%);overflow:hidden;inline-size:1px;block-size:1px;white-space:nowrap}
+[data-dsh-tab-chrome] .chrome-address button{min-inline-size:24px;min-block-size:24px}
+[data-dsh-tab-chrome] .desktop-viewport{display:flex;flex:1;min-inline-size:0;min-block-size:0}
+[data-dsh-tab-chrome] .desktop-guest{display:flex;flex:1;inline-size:100%;min-inline-size:0;min-block-size:0;-webkit-app-region:no-drag}
+html:has([data-dockkit-pointer]) [data-dsh-tab-chrome] .desktop-guest{pointer-events:none}
+@container dsh-browser (width < 340px){
+  [data-dsh-tab-chrome] .chrome-address{display:grid;grid-template-columns:repeat(3,auto) minmax(0,1fr)}
+  [data-dsh-tab-chrome] .chrome-primary-tool{grid-column:1/-1;justify-self:end}
+}
 `;
 var inject = ["sidebarRightTabs", "slots", "locale"];
 function apply(ctx) {
@@ -557,7 +853,13 @@ function apply(ctx) {
     title: () => t("browser"),
     guide: [{ id: "new", commandId: "browser.new", order: 30, title: () => t("browser"), description: () => t("description") }]
   }), `${ID}: tab`);
-  ctx.effect(() => ctx.slots.inject(SLOT, () => ctx.slots.register({ name: SLOT, key: ID, locale: namespace }, BrowserTab)), `${ID}: body`);
+  const registerBody = (scope, workspace) => {
+    const inject2 = workspace ? (sessionId) => ({ workspace, sessionId }) : void 0;
+    scope.effect(() => scope.slots.inject(SLOT, () => scope.slots.register({ name: SLOT, key: ID, locale: namespace, inject: inject2 }, BrowserTab)), `${ID}: body`);
+  };
+  if (nativeClient() && window.dshDesktop.browser) {
+    ctx.inject(["workspaces"], (scope) => registerBody(scope, scope.workspaces.list));
+  } else registerBody(ctx);
   ctx.effect(() => {
     const style = document.createElement("style");
     style.textContent = css;

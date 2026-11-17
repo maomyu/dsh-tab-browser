@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NativeTab } from './native-tab.jsx'
+import { DesktopTab } from './desktop-tab.jsx'
+import { usesDesktopPage } from './browser-navigation.js'
 import { MAX_COOKIE_FILE, prepareCookieImport } from './cookie-import.js'
 
 const ID = 'dsh-tab-browser'
@@ -9,6 +11,7 @@ let navigations = new WeakMap()
 const messages = {
   zh: {
     back: '后退', forward: '前进', reload: '刷新', address: '输入网址', openPage: '打开网页',
+    addressInvalid: '请输入有效的 HTTP 或 HTTPS 网址。', pageFailed: '网页加载失败。',
     manage: '管理扩展', resume: '返回浏览', openWindow: '在 Chrome 窗口打开', disconnected: '网页连接已结束。',
     browser: '浏览器', title: 'Google Chrome', description: '在侧栏浏览网页',
     start: '启动 Chrome', retry: '重试', waiting: '正在启动 Chrome…',
@@ -26,6 +29,7 @@ const messages = {
   },
   en: {
     back: 'Back', forward: 'Forward', reload: 'Reload', address: 'Enter a URL', openPage: 'Open page',
+    addressInvalid: 'Enter a valid HTTP or HTTPS address.', pageFailed: 'The page did not load.',
     manage: 'Manage extensions', resume: 'Return to browsing', openWindow: 'Open in a Chrome window', disconnected: 'The page disconnected.',
     browser: 'Browser', title: 'Google Chrome', description: 'Browse the web in the sidebar',
     start: 'Start Chrome', retry: 'Try again', waiting: 'Starting Chrome…',
@@ -259,12 +263,29 @@ function ChromeTab({ tab, t }) {
   </div>
 }
 
-function BrowserTab({ useTabInfo, t }) {
+function DesktopBrowser({tab, t, workspace, sessionId}) {
+  const {revision, params} = tab.navigation
+  const [override, setOverride] = useState()
+  const supplied = useMemo(() => ({revision, url: params?.url, popup: params?.chromePopup}), [revision, params?.url, params?.chromePopup])
+  const navigation = override?.revision === revision ? override : supplied
+  const bridge = workspace && window.dshDesktop.browser
+  const switchTo = url => setOverride({revision, url})
+
+  return bridge && !navigation.popup && usesDesktopPage(navigation.url)
+    ? <DesktopTab tab={tab} t={t} navigation={navigation} workspace={workspace} sessionId={sessionId} bridge={bridge} onSwitch={switchTo} />
+    : <NativeTab tab={tab} t={t} navigation={navigation} CookieImport={CookieImport} parseViewer={parseViewer}
+        onAddress={url => {
+          if (!bridge || !usesDesktopPage(url)) return false
+          switchTo(url)
+          return true
+        }} />
+}
+
+function BrowserTab({ useTabInfo, t, workspace, sessionId }) {
   const { tab } = useTabInfo()
-  if (nativeClient()) {
-    return <NativeTab tab={tab} t={t} CookieImport={CookieImport} parseViewer={parseViewer} />
-  }
-  return <ChromeTab tab={tab} t={t} />
+  return nativeClient()
+    ? <DesktopBrowser tab={tab} t={t} workspace={workspace} sessionId={sessionId} />
+    : <ChromeTab tab={tab} t={t} />
 }
 
 const css = `
@@ -289,6 +310,16 @@ const css = `
 [data-dsh-tab-chrome] .chrome-native-tools{display:flex;align-items:center;flex:none;flex-wrap:wrap}
 [data-dsh-tab-chrome] .chrome-native-tools>button{font-size:12px;padding:3px 8px;margin:0 8px}
 [data-dsh-tab-chrome] .chrome-alert{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px}
+[data-dsh-tab-chrome].chrome-native{container:dsh-browser / inline-size}
+[data-dsh-tab-chrome] .chrome-sr-only{position:absolute;clip-path:inset(50%);overflow:hidden;inline-size:1px;block-size:1px;white-space:nowrap}
+[data-dsh-tab-chrome] .chrome-address button{min-inline-size:24px;min-block-size:24px}
+[data-dsh-tab-chrome] .desktop-viewport{display:flex;flex:1;min-inline-size:0;min-block-size:0}
+[data-dsh-tab-chrome] .desktop-guest{display:flex;flex:1;inline-size:100%;min-inline-size:0;min-block-size:0;-webkit-app-region:no-drag}
+html:has([data-dockkit-pointer]) [data-dsh-tab-chrome] .desktop-guest{pointer-events:none}
+@container dsh-browser (width < 340px){
+  [data-dsh-tab-chrome] .chrome-address{display:grid;grid-template-columns:repeat(3,auto) minmax(0,1fr)}
+  [data-dsh-tab-chrome] .chrome-primary-tool{grid-column:1/-1;justify-self:end}
+}
 `
 
 export const inject = ['sidebarRightTabs', 'slots', 'locale']
@@ -301,7 +332,13 @@ export function apply(ctx) {
     id: ID, kind: 'browser', priority: 'extension', multiple: nativeClient(), keepMounted: nativeClient(), title: () => t('browser'),
     guide: [{ id: 'new', commandId: 'browser.new', order: 30, title: () => t('browser'), description: () => t('description') }],
   }), `${ID}: tab`)
-  ctx.effect(() => ctx.slots.inject(SLOT, () => ctx.slots.register({ name: SLOT, key: ID, locale: namespace }, BrowserTab)), `${ID}: body`)
+  const registerBody = (scope, workspace) => {
+    const inject = workspace ? sessionId => ({workspace, sessionId}) : undefined
+    scope.effect(() => scope.slots.inject(SLOT, () => scope.slots.register({name: SLOT, key: ID, locale: namespace, inject}, BrowserTab)), `${ID}: body`)
+  }
+  if (nativeClient() && window.dshDesktop.browser) {
+    ctx.inject(['workspaces'], scope => registerBody(scope, scope.workspaces.list))
+  } else registerBody(ctx)
   ctx.effect(() => {
     const style = document.createElement('style')
     style.textContent = css

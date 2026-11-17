@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-
-const tabKeys = new WeakMap()
+import { BrowserToolbar } from './browser-toolbar.jsx'
+import { previewMessage } from './browser-navigation.js'
 
 function request(key, action, data, keepalive = false) {
   return fetch(new URL('api/dsh-tab-browser/native', document.baseURI), {
@@ -15,28 +15,16 @@ function request(key, action, data, keepalive = false) {
   })
 }
 
-function address(value) {
-  const text = value.trim()
-  if (!text) return undefined
-  if (/^[\w.-]+:\d+(?:[/?#]|$)/u.test(text)) return 'http://' + text
-  return /^[a-z][a-z\d+.-]*:/iu.test(text) ? text : 'https://' + text
-}
-
-export function NativeTab({tab, t, CookieImport, parseViewer}) {
-  if (!tabKeys.has(tab.signal)) tabKeys.set(tab.signal, crypto.randomUUID())
-  const key = tabKeys.get(tab.signal)
-  const {revision, params} = tab.navigation
-  const url = params?.url
-  const popup = params?.chromePopup
+export function NativeTab({tab, t, navigation, CookieImport, parseViewer, onAddress}) {
+  const [key] = useState(() => crypto.randomUUID())
+  const {url, popup} = navigation
   const frame = useRef(null)
-  const locationField = useRef(null)
   const seen = useRef(null)
-  const actual = useRef('')
   const [viewer, setViewer] = useState(null)
   const [generation, setGeneration] = useState(0)
   const [mode, setMode] = useState('browser')
   const [title, setTitle] = useState('')
-  const [locationText, setLocationText] = useState(url ?? '')
+  const [address, setAddress] = useState(url ?? '')
   const [busy, setBusy] = useState(false)
   const [offline, setOffline] = useState(false)
   const [error, setError] = useState('')
@@ -44,8 +32,7 @@ export function NativeTab({tab, t, CookieImport, parseViewer}) {
   function accept(result) {
     setMode(result.mode)
     setTitle(result.title || '')
-    actual.current = result.url || ''
-    if (document.activeElement !== locationField.current) setLocationText(actual.current)
+    setAddress(result.url || '')
   }
 
   async function run(action, data, reconnect = false) {
@@ -72,21 +59,25 @@ export function NativeTab({tab, t, CookieImport, parseViewer}) {
   useEffect(() => {
     const close = () => { void request(key, 'release', undefined, true).catch(() => {}) }
     tab.signal.addEventListener('abort', close, {once: true})
-    return () => tab.signal.removeEventListener('abort', close)
+    return () => {
+      tab.signal.removeEventListener('abort', close)
+      if (!tab.signal.aborted) close()
+    }
   }, [key, tab.signal])
 
   useEffect(() => {
-    if (!tab.visible || seen.current?.revision === revision && seen.current?.key === key) return
-    seen.current = {revision, key}
+    if (!tab.visible || seen.current === navigation) return
+    seen.current = navigation
+    if (!url && !popup && !viewer) return
     void run('attach', {url, popup})
-  }, [tab.visible, revision, key, url, popup])
+  }, [tab.visible, navigation])
 
   useEffect(() => {
     if (!viewer) return
     const receive = event => {
-      if (event.source !== frame.current?.contentWindow || event.origin !== viewer.origin ||
-          event.data?.type !== 'dsh-native-chrome') return
-      const message = event.data.message
+      if (event.source !== frame.current?.contentWindow || event.origin !== viewer.origin) return
+      const message = previewMessage(event.data)
+      if (!message) return
       if (message.type === 'status') accept(message)
       if (message.type === 'offline') setOffline(true)
       if (message.type === 'ready') setOffline(false)
@@ -98,29 +89,20 @@ export function NativeTab({tab, t, CookieImport, parseViewer}) {
     return () => window.removeEventListener('message', receive)
   }, [viewer, tab.actions])
 
+  const canControl = !busy && viewer && mode === 'browser'
   return <div data-dsh-tab-chrome="" className="chrome-native">
-    <form className="chrome-address" onSubmit={event => {
-      event.preventDefault()
-      const url = address(locationText)
-      if (!url) return
-      locationField.current?.blur()
-      void run('navigate', {url})
-    }}>
-      <button type="button" title={t('back')} aria-label={t('back')} disabled={busy || !viewer || mode !== 'browser'} onClick={() => run('back')}>‹</button>
-      <button type="button" title={t('forward')} aria-label={t('forward')} disabled={busy || !viewer || mode !== 'browser'} onClick={() => run('forward')}>›</button>
-      <button type="button" title={t('reload')} aria-label={t('reload')} disabled={busy || !viewer || mode !== 'browser'} onClick={() => run('reload')}>↻</button>
-      <input ref={locationField} type="text" aria-label={t('address')} placeholder={t('address')} title={title || locationText}
-        value={locationText} onChange={event => setLocationText(event.target.value)} spellCheck={false}
-        onKeyDown={event => { if (event.key === 'Escape') setLocationText(actual.current) }}
-        disabled={busy || mode !== 'browser'} />
-      <button type="submit" hidden>{t('openPage')}</button>
-      <button type="button" disabled={busy || mode === 'starting'} onClick={() => run(mode === 'manage' ? 'resume' : 'manage')}>
+    <BrowserToolbar t={t} url={address} title={title} locked={busy || mode !== 'browser'}
+      canBack={canControl} canForward={canControl} canReload={canControl}
+      onBack={() => run('back')} onForward={() => run('forward')} onReload={() => run('reload')}
+      onNavigate={url => { if (!onAddress(url)) void run('navigate', {url}) }}>
+      <button className="chrome-primary-tool" type="button" disabled={busy || mode === 'starting'}
+        onClick={() => run(mode === 'manage' ? 'resume' : 'manage')}>
         {t(mode === 'manage' ? 'resume' : 'manage')}
       </button>
-    </form>
+    </BrowserToolbar>
     {viewer && mode === 'browser' && <div className="chrome-native-tools">
       <CookieImport t={t} applyImport={bundle => request(key, 'import', {bundle})} />
-      {actual.current && <button type="button" disabled={busy} onClick={() => run('openWindow')}>{t('openWindow')}</button>}
+      {address && <button type="button" disabled={busy} onClick={() => run('openWindow')}>{t('openWindow')}</button>}
     </div>}
     {(error || offline) && <div className="chrome-alert" role={error ? 'alert' : 'status'}>
       {error || t('disconnected')}

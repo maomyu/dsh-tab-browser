@@ -1,12 +1,14 @@
 # DSH 内置浏览器增强
 
-在 macOS 版 DeepSeek Harness 打开原来的「浏览器」Tab 即可使用本机 Google Chrome。一个网页对应一个 DSH 右侧 Tab，网页用新标签打开的链接也会在右侧新建 Tab。只传输当前正在看的网页画面，切换 Tab 时页面继续留在 Chrome 中。
+在 macOS 版 DeepSeek Harness 打开原来的「浏览器」Tab 即可浏览网页。一个网页对应一个 DSH 右侧 Tab，网页用新标签打开的链接也会在右侧新建 Tab。
 
 ## macOS 桌面版
 
 1. 在 Mac 的「应用程序」安装 Google Chrome。在 DSH 的「插件 → DSH Deck」更新「浏览器增强」，然后打开右侧「浏览器」。
 2. 输入网址浏览。要安装扩展，点「管理扩展」，在打开的 Chrome 窗口使用 Chrome 网上应用店，或在扩展管理页加载解压后的扩展。装好后回到 DSH，点「返回浏览」。
 3. 抖音在这套 Chrome 中首次登录后，登录资料随浏览器资料保存。遇到验证页时，可点「在 Chrome 窗口打开」，完成验证或登录后回 DSH 点「返回浏览」。只要抖音会话仍然有效，重启后即可继续使用。
+
+在地址栏输入小红书或 RedNote 的官方网址，页面会直接显示在 DSH 的网页容器中。这个容器使用 DSH 工作区的会话，Chrome 扩展和 Chrome 导入的 Cookie 适用于独立 Chrome 浏览。小红书的登录提示和安全验证由网站提供。
 
 扩展管理窗口与 DSH 浏览共用同一套独立 Chrome 资料。切换前会关闭正在运行的 Chrome，回到 DSH 时重新打开原来的网址。首版用 Chrome 窗口管理扩展及弹窗，网页标题显示在 DSH 地址栏的提示里。每个 DSH 配置各有独立资料，保存在 DSH 数据目录的 `browser-data` 中。
 
