@@ -63,6 +63,7 @@ export class NativeChrome {
       void pipe.send('Page.screencastFrameAck', {sessionId: frame.sessionId}, session).catch(() => {})
       const tab = this.sessions.get(session)
       if (tab?.peers.size && this.mode === 'browser') {
+        tab.hasFrame = true
         if (frame.metadata.deviceWidth > 0 && frame.metadata.deviceHeight > 0) {
           tab.viewport = {width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight}
         }
@@ -169,8 +170,19 @@ export class NativeChrome {
       const visible = tab.peers.size > 0
       if (tab.casting === visible) return
       if (visible) {
-        await this.pipe.send('Target.activateTarget', {targetId: tab.target})
-        await this.pipe.send('Page.startScreencast', {format: 'jpeg', quality: 72, maxWidth: 1440, maxHeight: 1000}, tab.session)
+        const {pipe} = this
+        const {session} = tab
+        tab.hasFrame = false
+        await pipe.send('Target.activateTarget', {targetId: tab.target})
+        await pipe.send('Page.startScreencast', {format: 'jpeg', quality: 72, maxWidth: 1440, maxHeight: 1000}, session)
+        if (!tab.hasFrame) {
+          // A static page may not repaint when Chrome resumes a screencast.
+          void pipe.send('Page.captureScreenshot', {format: 'jpeg', quality: 72}, session).then(({data}) => {
+            if (tab.session !== session || tab.hasFrame || !tab.peers.size) return
+            tab.viewport = {width: tab.width, height: tab.height}
+            tab.notify?.({type: 'frame', data})
+          }).catch(() => {})
+        }
       } else await this.pipe.send('Page.stopScreencast', {}, tab.session)
       tab.casting = visible
     }).catch(() => tab.notify?.({type: 'offline'}))
