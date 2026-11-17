@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { NativeTab } from './native-tab.jsx'
 import { MAX_COOKIE_FILE, prepareCookieImport } from './cookie-import.js'
 
 const ID = 'dsh-tab-browser'
@@ -7,6 +8,8 @@ let lastViewer
 let navigations = new WeakMap()
 const messages = {
   zh: {
+    back: '后退', forward: '前进', reload: '刷新', address: '输入网址', openPage: '打开网页',
+    manage: '管理扩展', resume: '返回浏览', openWindow: '在 Chrome 窗口打开', disconnected: '网页连接已结束。',
     browser: '浏览器', title: 'Google Chrome', description: '在侧栏浏览网页',
     start: '启动 Chrome', retry: '重试', waiting: '正在启动 Chrome…',
     firstRun: '首次启动需要下载浏览器。Chrome 使用独立的浏览器资料。',
@@ -22,6 +25,8 @@ const messages = {
     keyringFailed: '无法更新自动解锁设置，请重试。', keyringWorking: '正在处理…',
   },
   en: {
+    back: 'Back', forward: 'Forward', reload: 'Reload', address: 'Enter a URL', openPage: 'Open page',
+    manage: 'Manage extensions', resume: 'Return to browsing', openWindow: 'Open in a Chrome window', disconnected: 'The page disconnected.',
     browser: 'Browser', title: 'Google Chrome', description: 'Browse the web in the sidebar',
     start: 'Start Chrome', retry: 'Try again', waiting: 'Starting Chrome…',
     firstRun: 'The first launch downloads Chrome. This browser uses its own profile.',
@@ -49,7 +54,7 @@ function parseViewer(value) {
   return url
 }
 
-function CookieImport({ t }) {
+function CookieImport({ t, applyImport }) {
   const picker = useRef(null)
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -75,12 +80,16 @@ function CookieImport({ t }) {
     setLoading(true)
     setStatus(null)
     try {
-      const response = await fetch(new URL('api/dsh-tab-browser/cookies', document.baseURI), {
-        method: 'POST', headers: { 'X-DSH-Chrome': '1', 'Content-Type': 'application/json' },
-        body: selected.text,
-      })
-      if (!response.ok) throw new Error()
-      const result = await response.json()
+      let result
+      if (applyImport) result = await applyImport(JSON.parse(selected.text))
+      else {
+        const response = await fetch(new URL('api/dsh-tab-browser/cookies', document.baseURI), {
+          method: 'POST', headers: { 'X-DSH-Chrome': '1', 'Content-Type': 'application/json' },
+          body: selected.text,
+        })
+        if (!response.ok) throw new Error()
+        result = await response.json()
+      }
       setSelected(null)
       setStatus({ key: result.opened ? 'imported' : 'manualOpen' })
     } catch {
@@ -248,6 +257,9 @@ function ChromeTab({ tab, t }) {
 
 function BrowserTab({ useTabInfo, t }) {
   const { tab } = useTabInfo()
+  if (window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes('Macintosh')) {
+    return <NativeTab tab={tab} t={t} CookieImport={CookieImport} parseViewer={parseViewer} />
+  }
   return <ChromeTab tab={tab} t={t} />
 }
 
@@ -266,6 +278,13 @@ const css = `
 [data-dsh-tab-chrome] .chrome-import p{min-width:0;font-size:12px}
 [data-dsh-tab-chrome] .chrome-tools,[data-dsh-tab-chrome] .chrome-keyring{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 [data-dsh-tab-chrome] .chrome-keyring input{min-width:0;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:inherit;padding:3px 8px}
+[data-dsh-tab-chrome] .chrome-address{display:flex;align-items:center;gap:4px;padding:6px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l2)}
+[data-dsh-tab-chrome] .chrome-address input{flex:1;min-width:0;height:29px;box-sizing:border-box;padding:0 8px;font:inherit;font-size:13px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:inherit}
+[data-dsh-tab-chrome] .chrome-address button,[data-dsh-tab-chrome] .chrome-alert button{padding:4px 7px;white-space:nowrap}
+[data-dsh-tab-chrome] .chrome-address button[hidden]{display:none}
+[data-dsh-tab-chrome] .chrome-native-tools{display:flex;align-items:center;flex:none;flex-wrap:wrap}
+[data-dsh-tab-chrome] .chrome-native-tools>button{font-size:12px;padding:3px 8px;margin:0 8px}
+[data-dsh-tab-chrome] .chrome-alert{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px}
 `
 
 export const inject = ['sidebarRightTabs', 'slots', 'locale']
@@ -275,7 +294,7 @@ export function apply(ctx) {
   const t = ctx.locale.bind(namespace)
   ctx.effect(() => ctx.locale.register(namespace, messages), `${ID}: copy`)
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: ID, kind: 'browser', priority: 'extension', title: () => t('browser'),
+    id: ID, kind: 'browser', priority: 'extension', keepMounted: true, title: () => t('browser'),
     guide: [{ id: 'new', commandId: 'browser.new', order: 30, title: () => t('browser'), description: () => t('description') }],
   }), `${ID}: tab`)
   ctx.effect(() => ctx.slots.inject(SLOT, () => ctx.slots.register({ name: SLOT, key: ID, locale: namespace }, BrowserTab)), `${ID}: body`)

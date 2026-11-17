@@ -2,6 +2,7 @@ import { ChromeRuntime } from './chrome-runtime.js'
 import { openViewer } from './viewer-server.js'
 import { MAX_COOKIE_FILE, prepareCookieImport } from './cookie-import.js'
 import { MAX_KEYRING_PASSWORD } from './mac-keyring.js'
+import { registerNativeChrome } from './native-host.js'
 
 const CONNECT = '/api/dsh-tab-browser/connect'
 const IMPORT = '/api/dsh-tab-browser/cookies'
@@ -32,6 +33,7 @@ export function browserTarget(data, applicationOrigin) {
 
 export function apply(ctx) {
   ctx.inject(['connection'], scope => {
+    if (process.platform === 'darwin') registerNativeChrome(scope, localKeyringRequest, browserTarget)
     const chrome = new ChromeRuntime(scope.get('profileContext')?.name)
     let pending
     let viewer

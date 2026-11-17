@@ -25,7 +25,153 @@ __export(client_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(client_exports);
+var import_react2 = require("react");
+
+// src/native-tab.jsx
 var import_react = require("react");
+var import_jsx_runtime = require("react/jsx-runtime");
+function request(key, action, data, keepalive = false) {
+  return fetch(new URL("api/dsh-tab-browser/native", document.baseURI), {
+    method: "POST",
+    headers: { "X-DSH-Chrome": "1", "Content-Type": "application/json" },
+    body: JSON.stringify({ key, action, ...data }),
+    keepalive
+  }).then(async (response) => {
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    return result;
+  });
+}
+function address(value) {
+  const text = value.trim();
+  if (!text) return void 0;
+  if (/^[\w.-]+:\d+(?:[/?#]|$)/u.test(text)) return "http://" + text;
+  return /^[a-z][a-z\d+.-]*:/iu.test(text) ? text : "https://" + text;
+}
+function NativeTab({ tab, t, CookieImport: CookieImport2, parseViewer: parseViewer2 }) {
+  const key = tab.id;
+  const { revision, params } = tab.navigation;
+  const url = params?.url;
+  const popup = params?.chromePopup;
+  const frame = (0, import_react.useRef)(null);
+  const locationField = (0, import_react.useRef)(null);
+  const seen = (0, import_react.useRef)(null);
+  const actual = (0, import_react.useRef)("");
+  const [viewer, setViewer] = (0, import_react.useState)(null);
+  const [generation, setGeneration] = (0, import_react.useState)(0);
+  const [mode, setMode] = (0, import_react.useState)("browser");
+  const [title, setTitle] = (0, import_react.useState)("");
+  const [locationText, setLocationText] = (0, import_react.useState)(url ?? "");
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [offline, setOffline] = (0, import_react.useState)(false);
+  const [error, setError] = (0, import_react.useState)("");
+  function accept(result) {
+    setMode(result.mode);
+    setTitle(result.title || "");
+    actual.current = result.url || "";
+    if (document.activeElement !== locationField.current) setLocationText(actual.current);
+  }
+  async function run(action, data, reconnect = false) {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await request(key, action, data);
+      if (tab.signal.aborted) return;
+      if (result.viewer) {
+        const next = parseViewer2(result.viewer);
+        setViewer((previous) => previous?.href === next.href ? previous : next);
+        if (reconnect) setGeneration((value) => value + 1);
+        accept(result);
+      }
+      setOffline(false);
+      return result;
+    } catch (err) {
+      if (!tab.signal.aborted) setError(err.message || t("failed"));
+    } finally {
+      if (!tab.signal.aborted) setBusy(false);
+    }
+  }
+  (0, import_react.useEffect)(() => {
+    const close = () => {
+      void request(key, "release", void 0, true).catch(() => {
+      });
+    };
+    tab.signal.addEventListener("abort", close, { once: true });
+    return () => tab.signal.removeEventListener("abort", close);
+  }, [key, tab.signal]);
+  (0, import_react.useEffect)(() => {
+    if (!tab.visible || seen.current?.revision === revision && seen.current?.key === key) return;
+    seen.current = { revision, key };
+    void run("attach", { url, popup });
+  }, [tab.visible, revision, key, url, popup]);
+  (0, import_react.useEffect)(() => {
+    if (!viewer) return;
+    const receive = (event) => {
+      if (event.source !== frame.current?.contentWindow || event.origin !== viewer.origin || event.data?.type !== "dsh-native-chrome") return;
+      const message = event.data.message;
+      if (message.type === "status") accept(message);
+      if (message.type === "offline") setOffline(true);
+      if (message.type === "ready") setOffline(false);
+      if (message.type === "popup") {
+        tab.actions.openTab("browser", { params: { url: message.url, chromePopup: message.token }, revealIfOpened: false });
+      }
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [viewer, tab.actions]);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dsh-tab-chrome": "", className: "chrome-native", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "chrome-address", onSubmit: (event) => {
+      event.preventDefault();
+      const url2 = address(locationText);
+      if (!url2) return;
+      locationField.current?.blur();
+      void run("navigate", { url: url2 });
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("back"), "aria-label": t("back"), disabled: busy || !viewer || mode !== "browser", onClick: () => run("back"), children: "\u2039" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("forward"), "aria-label": t("forward"), disabled: busy || !viewer || mode !== "browser", onClick: () => run("forward"), children: "\u203A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", title: t("reload"), "aria-label": t("reload"), disabled: busy || !viewer || mode !== "browser", onClick: () => run("reload"), children: "\u21BB" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          ref: locationField,
+          type: "text",
+          "aria-label": t("address"),
+          placeholder: t("address"),
+          title: title || locationText,
+          value: locationText,
+          onChange: (event) => setLocationText(event.target.value),
+          spellCheck: false,
+          onKeyDown: (event) => {
+            if (event.key === "Escape") setLocationText(actual.current);
+          },
+          disabled: busy || mode !== "browser"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "submit", hidden: true, children: t("openPage") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy || mode === "starting", onClick: () => run(mode === "manage" ? "resume" : "manage"), children: t(mode === "manage" ? "resume" : "manage") })
+    ] }),
+    viewer && mode === "browser" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-native-tools", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CookieImport2, { t, applyImport: (bundle) => request(key, "import", { bundle }) }),
+      actual.current && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: () => run("openWindow"), children: t("openWindow") })
+    ] }),
+    (error || offline) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-alert", role: error ? "alert" : "status", children: [
+      error || t("disconnected"),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: () => run("attach", viewer ? void 0 : { url, popup }, true), children: t("retry") })
+    ] }),
+    viewer && tab.visible && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "iframe",
+      {
+        ref: frame,
+        title: title || "Google Chrome",
+        src: viewer.href,
+        sandbox: "allow-scripts allow-same-origin",
+        referrerPolicy: "no-referrer"
+      },
+      generation
+    ),
+    !viewer && busy && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "chrome-alert", role: "status", children: t("waiting") })
+  ] });
+}
 
 // src/cookie-import.js
 var MAX_COOKIE_FILE = 96 * 1024;
@@ -69,13 +215,22 @@ function prepareCookieImport(data, now = Date.now() / 1e3) {
 }
 
 // src/client.jsx
-var import_jsx_runtime = require("react/jsx-runtime");
+var import_jsx_runtime2 = require("react/jsx-runtime");
 var ID = "dsh-tab-browser";
 var SLOT = "sidebar.right.pane.tab";
 var lastViewer;
 var navigations = /* @__PURE__ */ new WeakMap();
 var messages = {
   zh: {
+    back: "\u540E\u9000",
+    forward: "\u524D\u8FDB",
+    reload: "\u5237\u65B0",
+    address: "\u8F93\u5165\u7F51\u5740",
+    openPage: "\u6253\u5F00\u7F51\u9875",
+    manage: "\u7BA1\u7406\u6269\u5C55",
+    resume: "\u8FD4\u56DE\u6D4F\u89C8",
+    openWindow: "\u5728 Chrome \u7A97\u53E3\u6253\u5F00",
+    disconnected: "\u7F51\u9875\u8FDE\u63A5\u5DF2\u7ED3\u675F\u3002",
     browser: "\u6D4F\u89C8\u5668",
     title: "Google Chrome",
     description: "\u5728\u4FA7\u680F\u6D4F\u89C8\u7F51\u9875",
@@ -105,6 +260,15 @@ var messages = {
     keyringWorking: "\u6B63\u5728\u5904\u7406\u2026"
   },
   en: {
+    back: "Back",
+    forward: "Forward",
+    reload: "Reload",
+    address: "Enter a URL",
+    openPage: "Open page",
+    manage: "Manage extensions",
+    resume: "Return to browsing",
+    openWindow: "Open in a Chrome window",
+    disconnected: "The page disconnected.",
     browser: "Browser",
     title: "Google Chrome",
     description: "Browse the web in the sidebar",
@@ -142,11 +306,11 @@ function parseViewer(value) {
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.username || url.password || !/^\/[A-Za-z0-9_-]{43}\/$/u.test(url.pathname) || url.search || url.hash) throw new Error();
   return url;
 }
-function CookieImport({ t }) {
-  const picker = (0, import_react.useRef)(null);
-  const [selected, setSelected] = (0, import_react.useState)(null);
-  const [loading, setLoading] = (0, import_react.useState)(false);
-  const [status, setStatus] = (0, import_react.useState)(null);
+function CookieImport({ t, applyImport }) {
+  const picker = (0, import_react2.useRef)(null);
+  const [selected, setSelected] = (0, import_react2.useState)(null);
+  const [loading, setLoading] = (0, import_react2.useState)(false);
+  const [status, setStatus] = (0, import_react2.useState)(null);
   async function chooseFile(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -166,13 +330,17 @@ function CookieImport({ t }) {
     setLoading(true);
     setStatus(null);
     try {
-      const response = await fetch(new URL("api/dsh-tab-browser/cookies", document.baseURI), {
-        method: "POST",
-        headers: { "X-DSH-Chrome": "1", "Content-Type": "application/json" },
-        body: selected.text
-      });
-      if (!response.ok) throw new Error();
-      const result = await response.json();
+      let result;
+      if (applyImport) result = await applyImport(JSON.parse(selected.text));
+      else {
+        const response = await fetch(new URL("api/dsh-tab-browser/cookies", document.baseURI), {
+          method: "POST",
+          headers: { "X-DSH-Chrome": "1", "Content-Type": "application/json" },
+          body: selected.text
+        });
+        if (!response.ok) throw new Error();
+        result = await response.json();
+      }
       setSelected(null);
       setStatus({ key: result.opened ? "imported" : "manualOpen" });
     } catch {
@@ -181,25 +349,25 @@ function CookieImport({ t }) {
       setLoading(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-import", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "file", "aria-label": t("importCookies"), accept: ".json,application/json", ref: picker, onChange: chooseFile, hidden: true }),
-    selected ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: selected.origin }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: loading, onClick: submit, children: t(loading ? "importing" : "importConfirm") }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: loading, onClick: () => {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-import", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "file", "aria-label": t("importCookies"), accept: ".json,application/json", ref: picker, onChange: chooseFile, hidden: true }),
+    selected ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: selected.origin }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: loading, onClick: submit, children: t(loading ? "importing" : "importConfirm") }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: loading, onClick: () => {
         setSelected(null);
         setStatus(null);
       }, children: t("cancel") })
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => picker.current?.click(), children: t("importCookies") }),
-    status && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: status.error ? "alert" : "status", children: t(status.key) })
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => picker.current?.click(), children: t("importCookies") }),
+    status && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: status.error ? "alert" : "status", children: t(status.key) })
   ] });
 }
 function KeyringSettings({ t }) {
-  const input = (0, import_react.useRef)(null);
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const [enabled, setEnabled] = (0, import_react.useState)(false);
-  const [working, setWorking] = (0, import_react.useState)(false);
-  const [message, setMessage] = (0, import_react.useState)(null);
+  const input = (0, import_react2.useRef)(null);
+  const [open, setOpen] = (0, import_react2.useState)(false);
+  const [enabled, setEnabled] = (0, import_react2.useState)(false);
+  const [working, setWorking] = (0, import_react2.useState)(false);
+  const [message, setMessage] = (0, import_react2.useState)(null);
   const endpoint = new URL("api/dsh-tab-browser/keyring", document.baseURI);
   const headers = { "X-DSH-Chrome": "1" };
   async function toggle() {
@@ -234,35 +402,35 @@ function KeyringSettings({ t }) {
       setWorking(false);
     }
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-import", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-expanded": open, disabled: working, onClick: toggle, children: t("keyring") }),
-    open && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "chrome-keyring", onSubmit: (event) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-import", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", "aria-expanded": open, disabled: working, onClick: toggle, children: t("keyring") }),
+    open && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("form", { className: "chrome-keyring", onSubmit: (event) => {
       event.preventDefault();
       const password = input.current.value;
       input.current.value = "";
       void change("POST", password);
     }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: t("keyringHelp") }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "password", ref: input, required: true, autoComplete: "off", "aria-label": t("keyringPassword"), maxLength: 1024 }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "submit", disabled: working, children: t(working ? "keyringWorking" : "keyringSave") }),
-      enabled && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: working, onClick: () => change("DELETE"), children: t("keyringForget") })
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: t("keyringHelp") }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "password", ref: input, required: true, autoComplete: "off", "aria-label": t("keyringPassword"), maxLength: 1024 }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "submit", disabled: working, children: t(working ? "keyringWorking" : "keyringSave") }),
+      enabled && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: working, onClick: () => change("DELETE"), children: t("keyringForget") })
     ] }),
-    message && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: message.error ? "alert" : "status", children: t(message.key) })
+    message && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: message.error ? "alert" : "status", children: t(message.key) })
   ] });
 }
 function ChromeTab({ tab, t }) {
   const { revision, params } = tab.navigation;
   const url = params?.url;
-  const [viewer, setViewer] = (0, import_react.useState)(lastViewer);
-  const [error, setError] = (0, import_react.useState)("");
-  const [starting, setStarting] = (0, import_react.useState)(false);
-  const frame = (0, import_react.useRef)(null);
-  const request = (0, import_react.useRef)(null);
+  const [viewer, setViewer] = (0, import_react2.useState)(lastViewer);
+  const [error, setError] = (0, import_react2.useState)("");
+  const [starting, setStarting] = (0, import_react2.useState)(false);
+  const frame = (0, import_react2.useRef)(null);
+  const request2 = (0, import_react2.useRef)(null);
   const local = localClient();
   async function connect({ target, newPage = false, reconnect = false } = {}) {
-    request.current?.abort();
+    request2.current?.abort();
     const controller = new AbortController();
-    request.current = controller;
+    request2.current = controller;
     if (reconnect) setViewer(null);
     setStarting(true);
     setError("");
@@ -288,26 +456,26 @@ function ChromeTab({ tab, t }) {
         setError(error2?.message || t("failed"));
       }
     } finally {
-      if (request.current === controller) {
-        request.current = null;
+      if (request2.current === controller) {
+        request2.current = null;
         setStarting(false);
       }
     }
   }
-  (0, import_react.useEffect)(() => () => {
-    request.current?.abort();
-    request.current = null;
+  (0, import_react2.useEffect)(() => () => {
+    request2.current?.abort();
+    request2.current = null;
   }, []);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (!local || !tab.visible) return;
     const previous = navigations.get(tab.signal);
-    if (previous === revision && (lastViewer || request.current)) return;
+    if (previous === revision && (lastViewer || request2.current)) return;
     navigations.set(tab.signal, revision);
     if (typeof url === "string" && previous !== revision) void connect({ target: url });
     else if (lastViewer && previous !== void 0 && previous !== revision) void connect({ newPage: true });
     else if (!lastViewer) void connect();
   }, [local, tab.visible, tab.signal, revision, url]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (!viewer) return;
     const reconnect = (event) => {
       if (event.source === frame.current?.contentWindow && event.origin === viewer.url.origin && event.data?.type === "dsh-chrome-reconnect") void connect({ reconnect: true });
@@ -315,12 +483,12 @@ function ChromeTab({ tab, t }) {
     window.addEventListener("message", reconnect);
     return () => window.removeEventListener("message", reconnect);
   }, [viewer]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dsh-tab-chrome": "", children: [
-    viewer && local && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "chrome-tools", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CookieImport, { t }),
-      window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(KeyringSettings, { t })
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-dsh-tab-chrome": "", children: [
+    viewer && local && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "chrome-tools", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CookieImport, { t }),
+      window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh") && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(KeyringSettings, { t })
     ] }),
-    viewer ? tab.visible && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    viewer ? tab.visible && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "iframe",
       {
         ref: frame,
@@ -330,19 +498,22 @@ function ChromeTab({ tab, t }) {
         referrerPolicy: "no-referrer"
       },
       viewer.generation
-    ) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "chrome-start", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: t("title") }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: t(local ? "description" : "local") }),
-      local && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => connect({ target: url }), disabled: starting, children: t(starting ? "waiting" : error ? "retry" : "start") }),
-        error ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: "alert", children: error }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "chrome-note", children: t("firstRun") })
+    ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("section", { className: "chrome-start", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { children: t("title") }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: t(local ? "description" : "local") }),
+      local && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => connect({ target: url }), disabled: starting, children: t(starting ? "waiting" : error ? "retry" : "start") }),
+        error ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: "alert", children: error }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "chrome-note", children: t("firstRun") })
       ] })
     ] })
   ] });
 }
 function BrowserTab({ useTabInfo, t }) {
   const { tab } = useTabInfo();
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChromeTab, { tab, t });
+  if (window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh")) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NativeTab, { tab, t, CookieImport, parseViewer });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ChromeTab, { tab, t });
 }
 var css = `
 [data-dsh-tab-chrome]{display:flex;flex-direction:column;flex:1;width:100%;height:100%;min-height:0;min-width:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
@@ -359,6 +530,13 @@ var css = `
 [data-dsh-tab-chrome] .chrome-import p{min-width:0;font-size:12px}
 [data-dsh-tab-chrome] .chrome-tools,[data-dsh-tab-chrome] .chrome-keyring{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 [data-dsh-tab-chrome] .chrome-keyring input{min-width:0;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:inherit;padding:3px 8px}
+[data-dsh-tab-chrome] .chrome-address{display:flex;align-items:center;gap:4px;padding:6px 8px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l2)}
+[data-dsh-tab-chrome] .chrome-address input{flex:1;min-width:0;height:29px;box-sizing:border-box;padding:0 8px;font:inherit;font-size:13px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:inherit}
+[data-dsh-tab-chrome] .chrome-address button,[data-dsh-tab-chrome] .chrome-alert button{padding:4px 7px;white-space:nowrap}
+[data-dsh-tab-chrome] .chrome-address button[hidden]{display:none}
+[data-dsh-tab-chrome] .chrome-native-tools{display:flex;align-items:center;flex:none;flex-wrap:wrap}
+[data-dsh-tab-chrome] .chrome-native-tools>button{font-size:12px;padding:3px 8px;margin:0 8px}
+[data-dsh-tab-chrome] .chrome-alert{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:12px}
 `;
 var inject = ["sidebarRightTabs", "slots", "locale"];
 function apply(ctx) {
@@ -369,6 +547,7 @@ function apply(ctx) {
     id: ID,
     kind: "browser",
     priority: "extension",
+    keepMounted: true,
     title: () => t("browser"),
     guide: [{ id: "new", commandId: "browser.new", order: 30, title: () => t("browser"), description: () => t("description") }]
   }), `${ID}: tab`);

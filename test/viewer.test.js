@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import WebSocket from 'ws'
 import { browserTarget } from '../src/host.js'
 import { openViewer } from '../src/viewer-server.js'
+import { openPageStreams } from '../src/page-stream.js'
 
 test('the built-in browser open passes only HTTP(S) addresses to Chrome', () => {
   assert.equal(browserTarget({ url: 'HTTPS://example.com?q=test' }), 'https://example.com/?q=test')
@@ -52,4 +53,43 @@ test('only the local viewer capability can open the display stream', async t => 
   client.close()
   await once(client, 'close')
   assert.equal(connections, 1)
+})
+
+test('native tabs isolate their streams and only accept browser input messages', async t => {
+  const input = []
+  const receivedInput = Promise.withResolvers()
+  const view = await openPageStreams({
+    status: tab => ({type: 'status', title: tab.title}),
+    watching: () => {},
+    async input(tab, event) {
+      input.push([tab.title, event])
+      receivedInput.resolve()
+    },
+  })
+  t.after(() => view.close())
+  const a = {title: 'first', peers: new Set()}
+  const b = {title: 'second', peers: new Set()}
+  async function connect(tab) {
+    const url = new URL(view.urlFor(tab))
+    const socket = new URL('input', url)
+    socket.protocol = 'ws:'
+    await assert.rejects(once(new WebSocket(socket, {origin: 'https://example.test'}), 'open'), /403/u)
+    const peer = new WebSocket(socket, {origin: url.origin})
+    const [status] = await once(peer, 'message')
+    assert.equal(JSON.parse(status).title, tab.title)
+    return peer
+  }
+  const first = await connect(a)
+  const second = await connect(b)
+  first.send(JSON.stringify({method: 'Browser.close'}))
+  first.send(JSON.stringify({type: 'size', width: 800, height: 600}))
+  const received = once(second, 'message')
+  b.notify({type: 'popup', url: 'https://example.com/'})
+  const [message] = await received
+  assert.equal(JSON.parse(message).type, 'popup')
+  await receivedInput.promise
+  view.remove(a)
+  await once(first, 'close')
+  assert.deepEqual(input, [['first', {type: 'size', width: 800, height: 600}]])
+  assert.equal(second.readyState, WebSocket.OPEN)
 })

@@ -2283,13 +2283,13 @@ var require_extension = __commonJS({
 var require_websocket = __commonJS({
   "node_modules/ws/lib/websocket.js"(exports, module) {
     "use strict";
-    var EventEmitter = __require("events");
+    var EventEmitter2 = __require("events");
     var https = __require("https");
     var http = __require("http");
     var net = __require("net");
     var querystring = __require("querystring");
     var tls = __require("tls");
-    var { randomBytes: randomBytes2, createHash: createHash2 } = __require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash3 } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2316,7 +2316,7 @@ var require_websocket = __commonJS({
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-    var WebSocket2 = class _WebSocket extends EventEmitter {
+    var WebSocket2 = class _WebSocket extends EventEmitter2 {
       /**
        * Create a new `WebSocket`.
        *
@@ -2843,7 +2843,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes2(16).toString("base64");
+      const key = randomBytes3(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -2980,7 +2980,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3362,10 +3362,10 @@ var require_subprotocol = __commonJS({
 var require_websocket_server = __commonJS({
   "node_modules/ws/lib/websocket-server.js"(exports, module) {
     "use strict";
-    var EventEmitter = __require("events");
+    var EventEmitter2 = __require("events");
     var http = __require("http");
     var { Duplex } = __require("stream");
-    var { createHash: createHash2 } = __require("crypto");
+    var { createHash: createHash3 } = __require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -3375,7 +3375,7 @@ var require_websocket_server = __commonJS({
     var RUNNING = 0;
     var CLOSING = 1;
     var CLOSED = 2;
-    var WebSocketServer2 = class extends EventEmitter {
+    var WebSocketServer2 = class extends EventEmitter2 {
       /**
        * Create a `WebSocketServer` instance.
        *
@@ -3675,7 +3675,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -3783,9 +3783,9 @@ var MacKeyring = class {
     this.supported = process.platform === "darwin";
   }
   command(args, input) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const child = execFile(KEYCHAIN, args, { timeout: 12e3, maxBuffer: 8192 }, (error, stdout) => {
-        resolve2({ exit: error?.code ?? 0, stdout });
+        resolve3({ exit: error?.code ?? 0, stdout });
       });
       child.stdin.on("error", () => {
       });
@@ -3992,7 +3992,7 @@ var ChromeRuntime = class {
     await this.docker(["exec", this.name, "google-chrome-stable", `--user-data-dir=${PROFILE_DIR}`, "--new-tab", url]);
   }
   keyringCommand(action, password) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const child = execFile2(this.dockerBin, this.dockerArgs([
         "exec",
         "-i",
@@ -4000,14 +4000,14 @@ var ChromeRuntime = class {
         "python3",
         "/usr/local/bin/chrome-keyring.py",
         action
-      ]), { timeout: 24e3, maxBuffer: 1024 }, (error) => resolve2(!error));
+      ]), { timeout: 24e3, maxBuffer: 1024 }, (error) => resolve3(!error));
       child.stdin.on("error", () => {
       });
       child.stdin.end(password);
     });
   }
   async importCookies(cookies) {
-    const result = await new Promise((resolve2, reject) => {
+    const result = await new Promise((resolve3, reject) => {
       const child = execFile2(this.dockerBin, this.dockerArgs([
         "exec",
         "-i",
@@ -4017,7 +4017,7 @@ var ChromeRuntime = class {
         "--import"
       ]), { timeout: 3e4, maxBuffer: 1024 }, (error, stdout) => {
         if (error) reject(new Error("Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002"));
-        else resolve2(stdout.trim());
+        else resolve3(stdout.trim());
       });
       child.stdin.on("error", () => {
       });
@@ -4122,17 +4122,17 @@ async function openViewer(chrome) {
       stream.pipe(child.stdin);
     });
   });
-  await new Promise((resolve2, reject) => {
+  await new Promise((resolve3, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve2);
+    server.listen(0, "127.0.0.1", resolve3);
   });
   endpoint = new URL(`http://127.0.0.1:${server.address().port}${path}`);
   return {
     url: endpoint.href,
-    close: () => new Promise((resolve2) => {
+    close: () => new Promise((resolve3) => {
       active?.terminate();
       frames.close();
-      server.close(resolve2);
+      server.close(resolve3);
       server.closeAllConnections();
     })
   };
@@ -4179,6 +4179,608 @@ function prepareCookieImport(data, now = Date.now() / 1e3) {
   return { origin: target.origin, cookies };
 }
 
+// src/native-chrome.js
+import { createHash as createHash2, randomUUID } from "node:crypto";
+import { existsSync as existsSync2, realpathSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { homedir as homedir2 } from "node:os";
+import { join as join2, resolve as resolve2 } from "node:path";
+
+// src/chrome-pipe.js
+import { EventEmitter, once } from "node:events";
+import { spawn as spawn2 } from "node:child_process";
+import { setTimeout as delay2 } from "node:timers/promises";
+var ChromePipe = class extends EventEmitter {
+  constructor(executable2, directory, headless) {
+    super();
+    this.next = 0;
+    this.pending = /* @__PURE__ */ new Map();
+    this.child = spawn2(executable2, [
+      "--remote-debugging-pipe",
+      `--user-data-dir=${directory}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-search-engine-choice-screen",
+      "--no-service-autorun",
+      ...headless ? ["--headless", "--window-size=1280,900", "about:blank"] : []
+    ], { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] });
+    this.child.stdio[4].setEncoding("utf8");
+    let partial = "";
+    this.child.stdio[4].on("data", (chunk) => {
+      const records = (partial + chunk).split("\0");
+      partial = records.pop();
+      for (const record of records) {
+        let message;
+        try {
+          message = JSON.parse(record);
+        } catch {
+          continue;
+        }
+        const request = this.pending.get(message.id);
+        if (request) {
+          this.pending.delete(message.id);
+          clearTimeout(request.timeout);
+          if (message.error) request.reject(new Error(message.error.message));
+          else request.resolve(message.result);
+        } else if (message.method) this.emit(message.method, message.params, message.sessionId);
+      }
+    });
+    const end = () => {
+      if (this.ended) return;
+      this.ended = true;
+      for (const request of this.pending.values()) {
+        clearTimeout(request.timeout);
+        request.reject(new Error("Chrome \u8FDE\u63A5\u5DF2\u7ED3\u675F\u3002"));
+      }
+      this.pending.clear();
+      this.emit("stopped");
+    };
+    this.child.once("error", end);
+    this.child.once("exit", end);
+    this.child.stdio[3].on("error", end);
+    this.child.stdio[4].on("error", end);
+  }
+  send(method, params = {}, sessionId, timeoutMs = 1e4) {
+    if (this.ended) return Promise.reject(new Error("Chrome \u8FDE\u63A5\u5DF2\u7ED3\u675F\u3002"));
+    const id = ++this.next;
+    return new Promise((resolve3, reject) => {
+      const timeout = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error(`Chrome ${method} \u54CD\u5E94\u8D85\u65F6\u3002`));
+      }, timeoutMs);
+      this.pending.set(id, { resolve: resolve3, reject, timeout });
+      this.child.stdio[3].write(JSON.stringify({ id, method, params, sessionId }) + "\0");
+    });
+  }
+  async close() {
+    if (this.child.exitCode !== null || this.child.signalCode !== null) return;
+    const exited = once(this.child, "exit").catch(() => {
+    });
+    const request = this.send("Browser.close").catch(() => {
+    });
+    await Promise.race([exited, delay2(1e4, void 0, { ref: false })]);
+    if (this.child.exitCode === null && this.child.signalCode === null) {
+      this.child.kill("SIGTERM");
+      await Promise.race([exited, delay2(3e3, void 0, { ref: false })]);
+    }
+    if (this.child.exitCode === null && this.child.signalCode === null) {
+      throw new Error("\u8BF7\u5148\u7ED3\u675F\u6269\u5C55\u7BA1\u7406\u7A97\u53E3\uFF0C\u518D\u8FD4\u56DE DSH\u3002");
+    }
+    await request;
+  }
+};
+
+// src/page-input.js
+function webAddress(value) {
+  if (typeof value !== "string" || value.length > 16384) return void 0;
+  try {
+    const url = new URL(value);
+    if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) return url.href;
+  } catch {
+  }
+}
+function limit(value, min, max) {
+  return Number.isFinite(value) && value >= min && value <= max;
+}
+function inputMessage(value) {
+  if (!value || typeof value !== "object") return void 0;
+  if (value.type === "text") {
+    if (typeof value.text === "string" && value.text.length > 0 && value.text.length <= 4096) return { type: "text", text: value.text };
+    return void 0;
+  }
+  if (value.type === "size") {
+    const { width, height } = value;
+    if (Number.isInteger(width) && Number.isInteger(height) && limit(width, 320, 1440) && limit(height, 240, 1e3)) {
+      return { type: "size", width, height };
+    }
+    return void 0;
+  }
+  const { modifiers } = value;
+  if (!Number.isInteger(modifiers) || !limit(modifiers, 0, 15)) return void 0;
+  if (value.type === "key") {
+    const { down, key, code, repeat, keyCode } = value;
+    if (typeof down !== "boolean" || typeof key !== "string" || !limit(key.length, 1, 32) || typeof code !== "string" || !/^[a-zA-Z0-9]{0,40}$/u.test(code) || !Number.isInteger(keyCode) || !limit(keyCode, 0, 255)) return void 0;
+    return { type: "key", down, key, code, repeat: repeat === true, keyCode, modifiers };
+  }
+  if (value.type === "pointer") {
+    const { action, x, y, button, buttons } = value;
+    if (!["press", "release", "move", "wheel"].includes(action) || !limit(x, 0, 1) || !limit(y, 0, 1) || !Number.isInteger(buttons) || !limit(buttons, 0, 7) || !["none", "left", "middle", "right"].includes(button)) return void 0;
+    const result = { type: "pointer", action, x, y, button, buttons, modifiers };
+    if (action === "wheel") {
+      if (!limit(value.dx, -4e3, 4e3) || !limit(value.dy, -4e3, 4e3)) return void 0;
+      result.dx = value.dx;
+      result.dy = value.dy;
+    } else if (action === "press" || action === "release") {
+      result.clickCount = value.clickCount === 2 ? 2 : 1;
+    }
+    return result;
+  }
+}
+
+// src/native-chrome.js
+var pointerTypes = { press: "mousePressed", release: "mouseReleased", move: "mouseMoved", wheel: "mouseWheel" };
+var chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+var NativeChrome = class {
+  constructor(profile = "desktop") {
+    const configured = resolve2(process.env.DSH_HOME ?? join2(homedir2(), ".dsh"));
+    const home = existsSync2(configured) ? realpathSync(configured) : configured;
+    const id = createHash2("sha256").update(`${home}\0${profile}`).digest("hex").slice(0, 20);
+    this.directory = join2(home, "browser-data", `dsh-chrome-${id}`);
+    this.tabs = /* @__PURE__ */ new Map();
+    this.popups = /* @__PURE__ */ new Map();
+    this.claimed = /* @__PURE__ */ new Set();
+    this.sessions = /* @__PURE__ */ new Map();
+    this.mode = "browser";
+  }
+  async start(mode = "browser", managerUrl = "chrome://extensions/") {
+    if (this.pipe && !this.pipe.ended) return;
+    if (this.pipe) await this.closePipe();
+    const executable2 = [chromePath, join2(homedir2(), chromePath.slice(1))].find(existsSync2);
+    if (!executable2) throw new Error("\u8BF7\u5148\u5B89\u88C5 Google Chrome\u3002");
+    await mkdir(this.directory, { recursive: true, mode: 448 });
+    const pipe = new ChromePipe(executable2, this.directory, mode === "browser");
+    this.pipe = pipe;
+    pipe.on("stopped", () => {
+      if (this.pipe !== pipe) return;
+      const managing = this.mode === "manage";
+      this.clearPages();
+      this.mode = "browser";
+      for (const tab of this.tabs.values()) {
+        tab.notify?.(this.status(tab));
+        tab.notify?.({ type: "offline" });
+      }
+      if (managing) void this.onManagerClosed?.();
+    });
+    pipe.on("Target.targetCreated", ({ targetInfo }) => this.targetChanged(targetInfo));
+    pipe.on("Target.targetInfoChanged", ({ targetInfo }) => this.targetChanged(targetInfo));
+    pipe.on("Page.loadEventFired", (_params, session) => {
+      const targetId = this.sessions.get(session)?.target;
+      if (targetId) void pipe.send("Target.getTargetInfo", { targetId }).then(({ targetInfo }) => this.targetChanged(targetInfo)).catch(() => {
+      });
+    });
+    pipe.on("Target.targetDestroyed", ({ targetId }) => {
+      this.claimed.delete(targetId);
+      for (const [token, id] of this.popups) if (id === targetId) this.popups.delete(token);
+      for (const tab of this.tabs.values()) {
+        if (tab.target !== targetId) continue;
+        this.sessions.delete(tab.session);
+        tab.target = tab.session = void 0;
+        tab.casting = false;
+        tab.notify?.({ type: "offline" });
+      }
+    });
+    pipe.on("Page.screencastFrame", (frame, session) => {
+      void pipe.send("Page.screencastFrameAck", { sessionId: frame.sessionId }, session).catch(() => {
+      });
+      const tab = this.sessions.get(session);
+      if (tab?.peers.size && this.mode === "browser") {
+        if (frame.metadata.deviceWidth > 0 && frame.metadata.deviceHeight > 0) {
+          tab.viewport = { width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight };
+        }
+        tab.notify?.({ type: "frame", data: frame.data });
+      }
+    });
+    try {
+      await pipe.send("Browser.getVersion", {}, void 0, 25e3);
+      if (mode === "browser") await pipe.send("Target.setDiscoverTargets", { discover: true });
+      else {
+        const { targetId } = await pipe.send("Target.createTarget", { url: managerUrl });
+        await pipe.send("Target.activateTarget", { targetId });
+      }
+    } catch (error) {
+      await pipe.close().catch(() => {
+      });
+      throw error;
+    }
+  }
+  targetChanged(info) {
+    if (this.mode !== "browser" || info.type !== "page") return;
+    for (const tab of this.tabs.values()) {
+      if (tab.target === info.targetId) {
+        if (webAddress(info.url)) tab.url = info.url;
+        tab.title = info.title;
+        tab.notify?.(this.status(tab));
+        return;
+      }
+    }
+    if (!info.openerId || !webAddress(info.url) || this.claimed.has(info.targetId)) return;
+    const parent = [...this.tabs.values()].find((tab) => tab.target === info.openerId);
+    if (!parent) return;
+    this.claimed.add(info.targetId);
+    const token = randomUUID();
+    this.popups.set(token, info.targetId);
+    parent.notify?.({ type: "popup", token, url: info.url });
+  }
+  status(tab) {
+    return { type: "status", mode: this.mode, url: tab.url, title: tab.title };
+  }
+  tab(key) {
+    if (!this.tabs.has(key)) this.tabs.set(key, {
+      key,
+      peers: /* @__PURE__ */ new Set(),
+      url: "",
+      title: "",
+      width: 1280,
+      height: 900,
+      viewport: { width: 1280, height: 900 },
+      loading: void 0,
+      casting: false,
+      watch: Promise.resolve()
+    });
+    return this.tabs.get(key);
+  }
+  async page(tab, popup) {
+    if (tab.session) return;
+    if (!tab.loading) {
+      tab.loading = this.createPage(tab, popup).finally(() => {
+        tab.loading = void 0;
+      });
+    }
+    await tab.loading;
+  }
+  async createPage(tab, popup) {
+    const fromPopup = this.popups.get(popup);
+    if (fromPopup) this.popups.delete(popup);
+    const target = fromPopup ?? (await this.pipe.send("Target.createTarget", { url: "about:blank", background: true })).targetId;
+    try {
+      const { sessionId } = await this.pipe.send("Target.attachToTarget", { targetId: target, flatten: true });
+      tab.target = target;
+      tab.session = sessionId;
+      this.sessions.set(sessionId, tab);
+      await this.pipe.send("Page.enable", {}, sessionId);
+      await this.resize(tab);
+      if (fromPopup) {
+        const { targetInfo } = await this.pipe.send("Target.getTargetInfo", { targetId: target });
+        this.targetChanged(targetInfo);
+      } else if (tab.url) await this.navigate(tab, tab.url);
+    } catch (error) {
+      this.sessions.delete(tab.session);
+      tab.session = tab.target = void 0;
+      await this.pipe.send("Target.closeTarget", { targetId: target }).catch(() => {
+      });
+      throw error;
+    }
+  }
+  resize(tab) {
+    return this.pipe.send("Emulation.setDeviceMetricsOverride", {
+      width: tab.width,
+      height: tab.height,
+      deviceScaleFactor: 1,
+      mobile: false
+    }, tab.session);
+  }
+  async navigate(tab, url) {
+    tab.url = url;
+    const result = await this.pipe.send("Page.navigate", { url }, tab.session);
+    if (result.errorText && result.errorText !== "net::ERR_ABORTED") throw new Error("Chrome \u65E0\u6CD5\u6253\u5F00\u8FD9\u4E2A\u7F51\u9875\u3002");
+    tab.notify?.(this.status(tab));
+  }
+  async history(tab, direction) {
+    const { currentIndex, entries } = await this.pipe.send("Page.getNavigationHistory", {}, tab.session);
+    const target = entries[currentIndex + direction];
+    if (target && webAddress(target.url)) await this.pipe.send("Page.navigateToHistoryEntry", { entryId: target.id }, tab.session);
+  }
+  watching(tab) {
+    tab.watch = tab.watch.catch(() => {
+    }).then(async () => {
+      if (this.mode !== "browser" || !tab.session || this.pipe?.ended) return;
+      const visible = tab.peers.size > 0;
+      if (tab.casting === visible) return;
+      if (visible) {
+        await this.pipe.send("Target.activateTarget", { targetId: tab.target });
+        await this.pipe.send("Page.startScreencast", { format: "jpeg", quality: 72, maxWidth: 1440, maxHeight: 1e3 }, tab.session);
+      } else await this.pipe.send("Page.stopScreencast", {}, tab.session);
+      tab.casting = visible;
+    }).catch(() => tab.notify?.({ type: "offline" }));
+    return tab.watch;
+  }
+  async input(tab, event) {
+    if (this.mode !== "browser" || !tab.session || !tab.peers.size) return;
+    const { action, x, y, button, buttons, modifiers, dx, dy, clickCount } = event;
+    if (event.type === "size") {
+      if (event.width === tab.width && event.height === tab.height) return;
+      tab.width = event.width;
+      tab.height = event.height;
+      await this.resize(tab);
+    } else if (event.type === "text") {
+      await this.pipe.send("Input.insertText", { text: event.text }, tab.session);
+    } else if (event.type === "key") {
+      const { down, key, code, keyCode, repeat } = event;
+      const text = down && (modifiers & 7) === 0 && [...key].length === 1 ? key : void 0;
+      await this.pipe.send("Input.dispatchKeyEvent", {
+        type: down ? text ? "keyDown" : "rawKeyDown" : "keyUp",
+        key,
+        code,
+        modifiers,
+        windowsVirtualKeyCode: keyCode,
+        autoRepeat: repeat,
+        ...text ? { text, unmodifiedText: text } : {}
+      }, tab.session);
+    } else {
+      await this.pipe.send("Input.dispatchMouseEvent", {
+        type: pointerTypes[action],
+        x: x * (tab.viewport.width - 1),
+        y: y * (tab.viewport.height - 1),
+        button,
+        buttons,
+        modifiers,
+        clickCount,
+        ...action === "wheel" ? { deltaX: dx, deltaY: dy } : {}
+      }, tab.session);
+    }
+  }
+  async changeMode(mode, managerUrl) {
+    if (this.mode === mode && this.pipe && !this.pipe.ended) return;
+    this.mode = "starting";
+    for (const tab of this.tabs.values()) tab.notify?.(this.status(tab));
+    try {
+      await this.closePipe();
+      await this.start(mode, managerUrl);
+      this.mode = mode;
+    } catch (error) {
+      this.mode = "browser";
+      for (const tab of this.tabs.values()) {
+        tab.notify?.(this.status(tab));
+        tab.notify?.({ type: "offline" });
+      }
+      throw error;
+    }
+    for (const tab of this.tabs.values()) {
+      tab.notify?.(this.status(tab));
+      if (mode === "browser" && tab.peers.size) {
+        await this.page(tab).catch(() => tab.notify?.({ type: "offline" }));
+        await this.watching(tab);
+      }
+    }
+  }
+  async release(tab) {
+    this.tabs.delete(tab.key);
+    if (tab.loading) await tab.loading.catch(() => {
+    });
+    this.sessions.delete(tab.session);
+    if (tab.target && this.mode === "browser") {
+      await this.pipe?.send("Target.closeTarget", { targetId: tab.target }).catch(() => {
+      });
+    }
+  }
+  clearPages() {
+    for (const tab of this.tabs.values()) {
+      tab.session = tab.target = void 0;
+      tab.casting = false;
+    }
+    this.sessions.clear();
+    this.popups.clear();
+    this.claimed.clear();
+  }
+  async closePipe() {
+    const pipe = this.pipe;
+    this.pipe = void 0;
+    this.clearPages();
+    try {
+      await pipe?.close();
+    } catch (error) {
+      this.pipe = pipe;
+      throw error;
+    }
+  }
+};
+
+// src/page-stream.js
+import { randomBytes as randomBytes2 } from "node:crypto";
+import { readFile as readFile2 } from "node:fs/promises";
+import { createServer as createServer2 } from "node:http";
+var html2 = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chrome</title><link rel="stylesheet" href="viewer.css">
+<img id="frame" alt="" hidden draggable="false"><textarea id="keyboard" aria-label="\u7F51\u9875\u8F93\u5165" tabindex="-1"></textarea>
+<div id="status" role="status">\u6B63\u5728\u6253\u5F00\u7F51\u9875\u2026</div><script src="viewer.js"></script></html>`;
+var css2 = `html,body{width:100%;height:100%;margin:0;overflow:hidden}body{display:grid;place-items:center;background:#fff;color:#666;font:14px system-ui,sans-serif}
+#frame{display:block;max-width:100%;max-height:100%;width:auto;height:auto;user-select:none;touch-action:none}#frame[hidden],[hidden]{display:none}
+#keyboard{position:absolute;left:0;top:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none}
+@media(prefers-color-scheme:dark){body{background:#171717;color:#a1a1a1}}`;
+async function openPageStreams(engine) {
+  const script = await readFile2(new URL("./page-viewer.js", import.meta.url));
+  const assets = /* @__PURE__ */ new Map([
+    ["", ["text/html; charset=utf-8", html2]],
+    ["viewer.css", ["text/css; charset=utf-8", css2]],
+    ["viewer.js", ["text/javascript; charset=utf-8", script]]
+  ]);
+  const paths = /* @__PURE__ */ new Map();
+  const streams = new import_websocket_server.default({ noServer: true, maxPayload: 24 * 1024, perMessageDeflate: false });
+  let endpoint;
+  const server = createServer2((request, response) => {
+    const [, token, name, extra] = (request.url ?? "").split("/");
+    const asset = request.method === "GET" && request.headers.host === endpoint?.host && !extra && paths.has(token) && assets.get(name);
+    if (!asset) {
+      response.writeHead(404).end();
+      return;
+    }
+    const [type, body] = asset;
+    response.writeHead(200, {
+      "Content-Type": type,
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": `default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src ws://${endpoint.host}; base-uri 'none'; form-action 'none'; frame-ancestors dsh-app: http://127.0.0.1:* http://localhost:*`
+    }).end(body);
+  });
+  server.on("upgrade", (request, socket, head) => {
+    const [, token, name, extra] = (request.url ?? "").split("/");
+    const tab = paths.get(token);
+    if (request.headers.host !== endpoint?.host || request.headers.origin !== endpoint?.origin || name !== "input" || extra !== void 0 || !tab) {
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    streams.handleUpgrade(request, socket, head, (peer) => {
+      tab.peers.add(peer);
+      peer.on("error", () => peer.terminate());
+      peer.on("close", () => {
+        tab.peers.delete(peer);
+        void engine.watching(tab);
+      });
+      peer.on("message", (data, binary) => {
+        if (binary) return;
+        let event;
+        try {
+          event = inputMessage(JSON.parse(data));
+        } catch {
+          return;
+        }
+        if (event) void engine.input(tab, event).catch(() => {
+        });
+      });
+      peer.send(JSON.stringify(engine.status(tab)));
+      void engine.watching(tab);
+    });
+  });
+  await new Promise((resolve3, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve3);
+  });
+  endpoint = new URL(`http://127.0.0.1:${server.address().port}`);
+  return {
+    urlFor(tab) {
+      if (!tab.streamToken) {
+        tab.streamToken = randomBytes2(32).toString("base64url");
+        paths.set(tab.streamToken, tab);
+        tab.notify = (message) => {
+          if (!tab.peers.size) return;
+          const serialized = JSON.stringify(message);
+          for (const peer of tab.peers) {
+            if (peer.readyState !== import_websocket.default.OPEN) continue;
+            if (message.type === "frame" && peer.bufferedAmount > 256 * 1024) continue;
+            peer.send(serialized);
+          }
+        };
+      }
+      return new URL(`/${tab.streamToken}/`, endpoint).href;
+    },
+    remove(tab) {
+      paths.delete(tab.streamToken);
+      tab.notify = void 0;
+      for (const peer of tab.peers) peer.terminate();
+    },
+    close() {
+      for (const peer of streams.clients) peer.terminate();
+      streams.close();
+      return new Promise((resolve3) => {
+        server.close(resolve3);
+        server.closeAllConnections();
+      });
+    }
+  };
+}
+
+// src/native-host.js
+function registerNativeChrome(scope, isLocal, browserTarget2) {
+  const engine = new NativeChrome(scope.get("profileContext")?.name);
+  let queue = Promise.resolve();
+  let streams;
+  let closing = false;
+  const enqueue = (action) => queue = queue.catch(() => {
+  }).then(action);
+  engine.onManagerClosed = () => {
+    if (!closing) return enqueue(() => engine.changeMode("browser")).catch(() => {
+    });
+  };
+  scope.effect(() => scope.connection.fetch.register({
+    path: "/api/dsh-tab-browser/native",
+    methods: ["POST"],
+    requestBody: "buffered",
+    async fetch(request) {
+      if (!isLocal(request)) return new Response(null, { status: 403 });
+      if (closing) return new Response(null, { status: 503 });
+      const reply = (data2, status = 200) => Response.json(data2, { status, headers: { "Cache-Control": "no-store" } });
+      let data, url, importPlan;
+      try {
+        const body = await request.arrayBuffer();
+        if (body.byteLength > MAX_COOKIE_FILE + 4096) throw new Error();
+        data = JSON.parse(new TextDecoder().decode(body));
+        if (typeof data.key !== "string" || data.key.length < 1 || data.key.length > 256 || !["attach", "navigate", "back", "forward", "reload", "release", "manage", "openWindow", "resume", "import"].includes(data.action)) {
+          throw new Error();
+        }
+        const origin = request.headers.get("host") ? new URL(`http://${request.headers.get("host")}`).origin : new URL(request.url).origin;
+        if (data.action === "attach" || data.action === "navigate") url = browserTarget2({ url: data.url }, origin);
+        if (data.action === "navigate" && !url) throw new Error();
+        if (data.action === "import") {
+          importPlan = prepareCookieImport(data.bundle);
+          browserTarget2({ url: importPlan.origin }, origin);
+        }
+      } catch {
+        return reply({ error: "\u7F51\u9875\u5730\u5740\u3001\u8BF7\u6C42\u6216 Cookie \u6587\u4EF6\u65E0\u6548\u3002" }, 400);
+      }
+      try {
+        return await enqueue(async () => {
+          if (data.action === "release") {
+            const tab2 = engine.tabs.get(data.key);
+            if (tab2) {
+              streams?.remove(tab2);
+              await engine.release(tab2);
+            }
+            return reply({});
+          }
+          const tab = engine.tab(data.key);
+          if (data.action === "openWindow") {
+            if (!tab.url) return reply({ error: "\u8BF7\u5148\u6253\u5F00\u7F51\u9875\u3002" }, 409);
+            await engine.changeMode("manage", tab.url);
+          }
+          if (data.action === "manage") await engine.changeMode("manage");
+          if (data.action === "resume") await engine.changeMode("browser");
+          if (engine.mode !== "browser" && !["attach", "manage", "openWindow"].includes(data.action)) {
+            return reply({ error: "\u8BF7\u5148\u8FD4\u56DE DSH \u6D4F\u89C8\u3002" }, 409);
+          }
+          if (engine.mode === "browser") {
+            if (data.action === "import") {
+              await engine.start();
+              await engine.pipe.send("Storage.setCookies", { cookies: importPlan.cookies });
+              await engine.page(tab);
+              const opened = await engine.navigate(tab, importPlan.origin).then(() => true, () => false);
+              return reply({ opened, count: importPlan.cookies.length });
+            }
+            await engine.start();
+            const popup = data.action === "attach" && typeof data.popup === "string" && engine.popups.has(data.popup) ? data.popup : void 0;
+            if (!tab.session && url && !popup) tab.url = url;
+            await engine.page(tab, popup);
+            if (!popup && url && tab.url !== url) await engine.navigate(tab, url);
+            if (data.action === "reload") await engine.pipe.send("Page.reload", {}, tab.session);
+            if (data.action === "back" || data.action === "forward") await engine.history(tab, data.action === "back" ? -1 : 1);
+            void engine.watching(tab);
+          } else if (url && !tab.url) tab.url = url;
+          streams ??= await openPageStreams(engine);
+          return reply({ ...engine.status(tab), viewer: streams.urlFor(tab) });
+        });
+      } catch (error) {
+        return reply({ error: data.action === "import" ? "Chrome \u65E0\u6CD5\u5BFC\u5165 Cookie\u3002" : error.message }, 503);
+      }
+    }
+  }), "dsh-tab-browser: native Chrome");
+  scope.effect(() => async () => {
+    closing = true;
+    await queue.catch(() => {
+    });
+    await streams?.close();
+    await engine.closePipe();
+  }, "dsh-tab-browser: close native Chrome");
+}
+
 // src/host.js
 var CONNECT = "/api/dsh-tab-browser/connect";
 var IMPORT = "/api/dsh-tab-browser/cookies";
@@ -4204,6 +4806,7 @@ function browserTarget(data, applicationOrigin) {
 }
 function apply(ctx) {
   ctx.inject(["connection"], (scope) => {
+    if (process.platform === "darwin") registerNativeChrome(scope, localKeyringRequest, browserTarget);
     const chrome = new ChromeRuntime(scope.get("profileContext")?.name);
     let pending;
     let viewer;

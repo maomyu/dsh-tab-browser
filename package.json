@@ -1,7 +1,7 @@
 {
   "name": "dsh-tab-browser",
-  "version": "0.4.3",
-  "description": "浏览器增强 · 在 DeepSeek Harness 原来的浏览器 Tab 使用独立 Chrome，并可按站点导入 Cookie",
+  "version": "0.5.0",
+  "description": "浏览器增强 · 在 DSH 原来的浏览器 Tab 打开本机独立 Chrome 网页，支持扩展与单站点 Cookie 导入",
   "type": "module",
   "main": "./dist/host.js",
   "exports": {
