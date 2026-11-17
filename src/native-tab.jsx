@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+const tabKeys = new WeakMap()
+
 function request(key, action, data, keepalive = false) {
   return fetch(new URL('api/dsh-tab-browser/native', document.baseURI), {
     method: 'POST',
@@ -21,7 +23,8 @@ function address(value) {
 }
 
 export function NativeTab({tab, t, CookieImport, parseViewer}) {
-  const key = tab.id
+  if (!tabKeys.has(tab.signal)) tabKeys.set(tab.signal, crypto.randomUUID())
+  const key = tabKeys.get(tab.signal)
   const {revision, params} = tab.navigation
   const url = params?.url
   const popup = params?.chromePopup

@@ -30,6 +30,7 @@ var import_react2 = require("react");
 // src/native-tab.jsx
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
+var tabKeys = /* @__PURE__ */ new WeakMap();
 function request(key, action, data, keepalive = false) {
   return fetch(new URL("api/dsh-tab-browser/native", document.baseURI), {
     method: "POST",
@@ -49,7 +50,8 @@ function address(value) {
   return /^[a-z][a-z\d+.-]*:/iu.test(text) ? text : "https://" + text;
 }
 function NativeTab({ tab, t, CookieImport: CookieImport2, parseViewer: parseViewer2 }) {
-  const key = tab.id;
+  if (!tabKeys.has(tab.signal)) tabKeys.set(tab.signal, crypto.randomUUID());
+  const key = tabKeys.get(tab.signal);
   const { revision, params } = tab.navigation;
   const url = params?.url;
   const popup = params?.chromePopup;
@@ -301,6 +303,9 @@ var messages = {
 function localClient() {
   return window.dshDesktop?.protocolVersion === 1 || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 }
+function nativeClient() {
+  return window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh");
+}
 function parseViewer(value) {
   const url = new URL(value);
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.username || url.password || !/^\/[A-Za-z0-9_-]{43}\/$/u.test(url.pathname) || url.search || url.hash) throw new Error();
@@ -510,7 +515,7 @@ function ChromeTab({ tab, t }) {
 }
 function BrowserTab({ useTabInfo, t }) {
   const { tab } = useTabInfo();
-  if (window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes("Macintosh")) {
+  if (nativeClient()) {
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NativeTab, { tab, t, CookieImport, parseViewer });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ChromeTab, { tab, t });
@@ -547,7 +552,8 @@ function apply(ctx) {
     id: ID,
     kind: "browser",
     priority: "extension",
-    keepMounted: true,
+    multiple: nativeClient(),
+    keepMounted: nativeClient(),
     title: () => t("browser"),
     guide: [{ id: "new", commandId: "browser.new", order: 30, title: () => t("browser"), description: () => t("description") }]
   }), `${ID}: tab`);

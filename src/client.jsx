@@ -47,6 +47,10 @@ function localClient() {
   return window.dshDesktop?.protocolVersion === 1 || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
 }
 
+function nativeClient() {
+  return window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes('Macintosh')
+}
+
 function parseViewer(value) {
   const url = new URL(value)
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password ||
@@ -257,7 +261,7 @@ function ChromeTab({ tab, t }) {
 
 function BrowserTab({ useTabInfo, t }) {
   const { tab } = useTabInfo()
-  if (window.dshDesktop?.protocolVersion === 1 && navigator.userAgent.includes('Macintosh')) {
+  if (nativeClient()) {
     return <NativeTab tab={tab} t={t} CookieImport={CookieImport} parseViewer={parseViewer} />
   }
   return <ChromeTab tab={tab} t={t} />
@@ -294,7 +298,7 @@ export function apply(ctx) {
   const t = ctx.locale.bind(namespace)
   ctx.effect(() => ctx.locale.register(namespace, messages), `${ID}: copy`)
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: ID, kind: 'browser', priority: 'extension', keepMounted: true, title: () => t('browser'),
+    id: ID, kind: 'browser', priority: 'extension', multiple: nativeClient(), keepMounted: nativeClient(), title: () => t('browser'),
     guide: [{ id: 'new', commandId: 'browser.new', order: 30, title: () => t('browser'), description: () => t('description') }],
   }), `${ID}: tab`)
   ctx.effect(() => ctx.slots.inject(SLOT, () => ctx.slots.register({ name: SLOT, key: ID, locale: namespace }, BrowserTab)), `${ID}: body`)
